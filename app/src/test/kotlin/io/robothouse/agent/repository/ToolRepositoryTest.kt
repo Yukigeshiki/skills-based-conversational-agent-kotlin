@@ -38,21 +38,30 @@ class ToolRepositoryTest {
     }
 
     @Test
-    fun `getToolsByNames returns matching tools`() {
+    fun `getSpecificationsByNames returns specs for matching tools`() {
         val context = createContext(TestTool::class.java)
         val repository = ToolRepository(context)
-        val tools = repository.getToolsByNames(listOf("TestTool"))
+        val specs = repository.getSpecificationsByNames(listOf("TestTool"))
 
-        assertEquals(1, tools.size)
-        assertTrue(tools[0] is TestTool)
+        assertEquals(1, specs.size)
+        assertEquals("doSomething", specs[0].name())
     }
 
     @Test
-    fun `getToolsByNames skips unknown names`() {
+    fun `getExecutorsByNames returns executors for matching tools`() {
         val context = createContext(TestTool::class.java)
         val repository = ToolRepository(context)
-        val tools = repository.getToolsByNames(listOf("NonExistent"))
+        val executors = repository.getExecutorsByNames(listOf("TestTool"))
 
-        assertTrue(tools.isEmpty())
+        assertTrue(executors.containsKey("doSomething"))
+    }
+
+    @Test
+    fun `getSpecificationsByNames returns empty for unknown names`() {
+        val context = createContext(TestTool::class.java)
+        val repository = ToolRepository(context)
+        val specs = repository.getSpecificationsByNames(listOf("NonExistent"))
+
+        assertTrue(specs.isEmpty())
     }
 }

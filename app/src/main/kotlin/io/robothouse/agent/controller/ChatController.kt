@@ -1,7 +1,7 @@
 package io.robothouse.agent.controller
 
+import io.robothouse.agent.model.AgentResponse
 import io.robothouse.agent.model.ChatRequest
-import io.robothouse.agent.model.ChatResponse
 import io.robothouse.agent.service.DynamicAgentService
 import io.robothouse.agent.service.SkillRouterService
 import io.swagger.v3.oas.annotations.Operation
@@ -34,9 +34,9 @@ class ChatController(
         ]
     )
     @PostMapping
-    fun chat(@RequestBody @Valid request: ChatRequest): ResponseEntity<ChatResponse> {
+    fun chat(@RequestBody @Valid request: ChatRequest): ResponseEntity<AgentResponse> {
         val skill = skillRouterService.route(request.message)
         val response = dynamicAgentService.chat(skill, request.message)
-        return ResponseEntity.ok(ChatResponse(response = response, skill = skill.name))
+        return ResponseEntity.ok(response)
     }
 }
