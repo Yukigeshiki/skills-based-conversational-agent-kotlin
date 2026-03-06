@@ -71,7 +71,7 @@ class SkillRouterServiceTest {
         whenever(embeddingStore.search(any<EmbeddingSearchRequest>())).thenReturn(EmbeddingSearchResult(emptyList()))
         whenever(skillRepository.findByName("general-assistant")).thenReturn(null)
 
-        assertThrows<IllegalStateException> {
+        assertThrows<io.robothouse.agent.exception.NotFoundException> {
             routerService.route("Tell me a joke")
         }
     }

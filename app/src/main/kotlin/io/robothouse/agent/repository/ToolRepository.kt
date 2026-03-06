@@ -6,9 +6,15 @@ import dev.langchain4j.agent.tool.ToolSpecifications
 import dev.langchain4j.service.tool.DefaultToolExecutor
 import dev.langchain4j.service.tool.ToolExecutor
 import io.robothouse.agent.util.log
+import org.springframework.beans.factory.BeanCreationException
+import org.springframework.beans.factory.NoSuchBeanDefinitionException
 import org.springframework.context.ApplicationContext
 import org.springframework.stereotype.Component
 
+/**
+ * Discovers and caches all Spring beans annotated with LangChain4j's @Tool,
+ * providing access to their specifications and executors by bean name.
+ */
 @Component
 class ToolRepository(private val applicationContext: ApplicationContext) {
 
@@ -23,7 +29,10 @@ class ToolRepository(private val applicationContext: ApplicationContext) {
         for (beanName in applicationContext.beanDefinitionNames) {
             val bean = try {
                 applicationContext.getBean(beanName)
-            } catch (_: Exception) {
+            } catch (_: NoSuchBeanDefinitionException) {
+                continue
+            } catch (_: BeanCreationException) {
+                log.debug { "Skipping bean that failed to create: $beanName" }
                 continue
             }
             val toolMethods = bean.javaClass.methods.filter { it.isAnnotationPresent(Tool::class.java) }
@@ -41,6 +50,9 @@ class ToolRepository(private val applicationContext: ApplicationContext) {
         entries
     }
 
+    /**
+     * Returns tool specifications for the given bean names.
+     */
     fun getSpecificationsByNames(names: List<String>): List<ToolSpecification> =
         names.flatMap { name ->
             toolEntries[name]?.specifications ?: emptyList<ToolSpecification>().also {
@@ -48,11 +60,17 @@ class ToolRepository(private val applicationContext: ApplicationContext) {
             }
         }
 
+    /**
+     * Returns a map of tool method names to their executors for the given bean names.
+     */
     fun getExecutorsByNames(names: List<String>): Map<String, ToolExecutor> =
         names.fold(mutableMapOf()) { acc, name ->
             toolEntries[name]?.executors?.let { acc.putAll(it) }
             acc
         }
 
+    /**
+     * Returns the names of all registered tool beans.
+     */
     fun getToolNames(): Set<String> = toolEntries.keys
 }

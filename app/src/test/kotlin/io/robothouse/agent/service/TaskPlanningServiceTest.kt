@@ -2,7 +2,7 @@ package io.robothouse.agent.service
 
 import dev.langchain4j.agent.tool.ToolSpecification
 import dev.langchain4j.data.message.AiMessage
-import dev.langchain4j.model.chat.ChatLanguageModel
+import dev.langchain4j.model.chat.ChatModel
 import dev.langchain4j.model.chat.request.ChatRequest
 import dev.langchain4j.model.chat.response.ChatResponse
 import io.robothouse.agent.config.AgentProperties
@@ -17,8 +17,8 @@ class TaskPlanningServiceTest {
         maxPlanSteps = 5
     )
 
-    private fun fakeChatModel(response: String): ChatLanguageModel {
-        return object : ChatLanguageModel {
+    private fun fakeChatModel(response: String): ChatModel {
+        return object : ChatModel {
             override fun doChat(request: ChatRequest): ChatResponse {
                 return ChatResponse.builder().aiMessage(AiMessage.from(response)).build()
             }

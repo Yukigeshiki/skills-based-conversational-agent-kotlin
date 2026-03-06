@@ -11,10 +11,16 @@ import org.springframework.validation.annotation.Validated
 
 private val log = KotlinLogging.logger {}
 
+/**
+ * Spring Boot application entry point for the Agent Service.
+ */
 @Validated
 @SpringBootApplication
 class Application
 
+/**
+ * Logs application version and active profiles on startup.
+ */
 @Component
 class StartupLogger(private val environment: Environment) {
 

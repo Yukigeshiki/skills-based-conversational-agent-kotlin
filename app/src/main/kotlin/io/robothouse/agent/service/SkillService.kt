@@ -4,12 +4,22 @@ import dev.langchain4j.data.document.Metadata
 import dev.langchain4j.data.segment.TextSegment
 import dev.langchain4j.model.embedding.EmbeddingModel
 import dev.langchain4j.store.embedding.EmbeddingStore
+import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder.metadataKey
 import io.robothouse.agent.entity.Skill
+import io.robothouse.agent.exception.NotFoundException
 import io.robothouse.agent.model.SkillRequest
+import io.robothouse.agent.model.UpdateSkillRequest
 import io.robothouse.agent.repository.SkillRepository
+import io.robothouse.agent.util.log
 import org.springframework.stereotype.Service
 import java.util.UUID
 
+/**
+ * Service layer for skill CRUD operations.
+ *
+ * Manages skill persistence and maintains embedding store consistency
+ * by updating embeddings whenever a skill's description changes.
+ */
 @Service
 class SkillService(
     private val skillRepository: SkillRepository,
@@ -17,11 +27,31 @@ class SkillService(
     private val embeddingStore: EmbeddingStore<TextSegment>
 ) {
 
-    fun findAll(): List<Skill> = skillRepository.findAll()
+    /**
+     * Returns all registered skills.
+     */
+    fun findAll(): List<Skill> {
+        log.debug { "Fetching all skills" }
+        return skillRepository.findAll()
+    }
 
-    fun findById(id: UUID): Skill? = skillRepository.findById(id).orElse(null)
+    /**
+     * Returns the skill with the given ID.
+     */
+    fun findById(id: UUID): Skill {
+        log.debug { "Retrieving skill: id=$id" }
+        return skillRepository.findById(id).orElseThrow {
+            log.warn { "Attempt to access non-existent skill: id=$id" }
+            NotFoundException("Skill not found")
+        }
+    }
 
+    /**
+     * Creates a new skill and stores its description embedding for similarity routing.
+     */
     fun create(request: SkillRequest): Skill {
+        log.debug { "Processing create request for skill: name=${request.name}" }
+
         val skill = Skill(
             name = request.name,
             description = request.description,
@@ -31,24 +61,59 @@ class SkillService(
         )
         val saved = skillRepository.save(skill)
         embedSkill(saved)
+
+        log.info { "Created skill: id=${saved.id}, name=${saved.name}" }
         return saved
     }
 
-    fun update(id: UUID, request: SkillRequest): Skill? {
-        val existing = skillRepository.findById(id).orElse(null) ?: return null
-        existing.name = request.name
-        existing.description = request.description
-        existing.systemPrompt = request.systemPrompt
-        existing.toolNames = request.toolNames
-        existing.planningPrompt = request.planningPrompt
-        val saved = skillRepository.save(existing)
-        embedSkill(saved)
+    /**
+     * Partially updates the skill with the given ID, applying only non-null fields.
+     *
+     * Re-embeds the skill description if it was changed.
+     */
+    fun update(id: UUID, request: UpdateSkillRequest): Skill {
+        log.debug { "Processing update request for skill: id=$id" }
+
+        // Step 1: Execute partial update
+        val saved = skillRepository.patchUpdate(id, request)
+            ?: run {
+                log.warn { "Attempt to update non-existent skill: id=$id" }
+                throw NotFoundException("Skill not found")
+            }
+
+        // Step 2: Update embedding if description changed
+        request.description?.let {
+            removeEmbeddingsBySkillId(saved.id.toString())
+            embedSkill(saved)
+        }
+
+        log.info { "Updated skill: id=${saved.id}, name=${saved.name}" }
         return saved
+    }
+
+    /**
+     * Deletes the skill with the given ID and removes its embedding from the store.
+     */
+    fun delete(id: UUID) {
+        log.debug { "Processing delete request for skill: id=$id" }
+
+        if (!skillRepository.existsById(id)) {
+            log.warn { "Attempt to delete non-existent skill: id=$id" }
+            throw NotFoundException("Skill not found")
+        }
+
+        removeEmbeddingsBySkillId(id.toString())
+        skillRepository.deleteById(id)
+        log.info { "Deleted skill: id=$id" }
     }
 
     private fun embedSkill(skill: Skill) {
         val embedding = embeddingModel.embed(skill.description).content()
         val segment = TextSegment.from(skill.description, Metadata.from("skillId", skill.id.toString()))
         embeddingStore.add(embedding, segment)
+    }
+
+    private fun removeEmbeddingsBySkillId(skillId: String) {
+        embeddingStore.removeAll(metadataKey("skillId").isEqualTo(skillId))
     }
 }

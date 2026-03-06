@@ -5,7 +5,7 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import dev.langchain4j.agent.tool.ToolSpecification
 import dev.langchain4j.data.message.SystemMessage
 import dev.langchain4j.data.message.UserMessage
-import dev.langchain4j.model.chat.ChatLanguageModel
+import dev.langchain4j.model.chat.ChatModel
 import dev.langchain4j.model.chat.request.ChatRequest
 import io.robothouse.agent.config.AgentProperties
 import io.robothouse.agent.model.PlanStep
@@ -13,19 +13,33 @@ import io.robothouse.agent.model.TaskPlan
 import io.robothouse.agent.util.log
 import org.springframework.stereotype.Service
 
+/**
+ * Decomposes user requests into structured task plans via a single LLM call.
+ *
+ * Parses the LLM's JSON response into a [TaskPlan], stripping markdown code fences
+ * and falling back to a single-step plan on parse failure.
+ */
 @Service
 class TaskPlanningService(
-    private val chatLanguageModel: ChatLanguageModel,
+    private val chatModel: ChatModel,
     private val agentProperties: AgentProperties
 ) {
 
     private val objectMapper = jacksonObjectMapper()
 
+    /**
+     * Creates a task plan by sending the planning prompt and user message to the LLM.
+     *
+     * Resolves the `{{tools}}` placeholder in the planning prompt with
+     * available tool descriptions before making the LLM call.
+     */
     fun createPlan(
         planningPrompt: String,
         userMessage: String,
         toolSpecifications: List<ToolSpecification>
     ): TaskPlan {
+        log.debug { "Creating plan with ${toolSpecifications.size} available tool(s)" }
+
         val toolDescriptions = toolSpecifications.joinToString("\n") { spec ->
             "- ${spec.name()}: ${spec.description() ?: "No description"}"
         }
@@ -41,12 +55,24 @@ class TaskPlanningService(
             )
             .build()
 
-        val response = chatLanguageModel.chat(request)
-        val responseText = response.aiMessage().text() ?: ""
+        val response = chatModel.chat(request)
+        val responseText = response.aiMessage().text()
 
-        return parsePlan(responseText, userMessage)
+        if (responseText.isNullOrBlank()) {
+            throw IllegalStateException("Task planning failed: LLM returned an empty response")
+        }
+
+        val plan = parsePlan(responseText, userMessage)
+        log.info { "Created plan: steps=${plan.steps.size}, reasoning=${plan.reasoning}" }
+        return plan
     }
 
+    /**
+     * Parses the LLM response text into a [TaskPlan].
+     *
+     * Strips markdown code fences, caps steps at [AgentProperties.maxPlanSteps],
+     * and falls back to a single-step plan if JSON parsing fails.
+     */
     internal fun parsePlan(responseText: String, userMessage: String): TaskPlan {
         val cleaned = stripCodeFences(responseText).trim()
         return try {

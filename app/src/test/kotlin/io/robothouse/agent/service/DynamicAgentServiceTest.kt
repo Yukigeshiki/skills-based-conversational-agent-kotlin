@@ -3,7 +3,7 @@ package io.robothouse.agent.service
 import dev.langchain4j.agent.tool.ToolExecutionRequest
 import dev.langchain4j.agent.tool.ToolSpecification
 import dev.langchain4j.data.message.AiMessage
-import dev.langchain4j.model.chat.ChatLanguageModel
+import dev.langchain4j.model.chat.ChatModel
 import dev.langchain4j.model.chat.request.ChatRequest
 import dev.langchain4j.model.chat.response.ChatResponse
 import dev.langchain4j.service.tool.ToolExecutor
@@ -47,9 +47,9 @@ class DynamicAgentServiceTest {
         planningPrompt = "Plan the task"
     )
 
-    private fun fakeChatModel(vararg responses: ChatResponse): ChatLanguageModel {
+    private fun fakeChatModel(vararg responses: ChatResponse): ChatModel {
         val queue = ArrayDeque(responses.toList())
-        return object : ChatLanguageModel {
+        return object : ChatModel {
             override fun doChat(request: ChatRequest): ChatResponse {
                 return queue.removeFirstOrNull() ?: responses.last()
             }
@@ -241,7 +241,7 @@ class DynamicAgentServiceTest {
         whenever(taskPlanningService.createPlan(any(), any(), any())).thenReturn(multiStepPlan)
 
         var callCount = 0
-        val model = object : ChatLanguageModel {
+        val model = object : ChatModel {
             override fun doChat(request: ChatRequest): ChatResponse {
                 callCount++
                 return when (callCount) {

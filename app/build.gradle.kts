@@ -23,6 +23,8 @@ configurations.all {
     exclude(group = "commons-logging", module = "commons-logging")
 }
 
+ext["commons-lang3.version"] = libs.versions.commons.lang3.get()
+
 dependencies {
     implementation(libs.spring.boot.starter.web)
     implementation(libs.spring.boot.starter.validation)
@@ -52,6 +54,9 @@ dependencies {
     // Testing dependencies
     testImplementation(libs.spring.boot.starter.test)
     testImplementation(libs.mockito.kotlin)
+    testImplementation(libs.spring.boot.testcontainers)
+    testImplementation(libs.testcontainers.junit.jupiter)
+    testImplementation(libs.testcontainers.postgresql)
     testRuntimeOnly(libs.junit.platform.launcher)
     testRuntimeOnly(libs.h2.database)
 }
