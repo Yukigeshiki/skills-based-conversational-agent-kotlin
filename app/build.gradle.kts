@@ -5,6 +5,7 @@ plugins {
     alias(libs.plugins.spring.dependency.management)
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.kotlin.spring)
+    alias(libs.plugins.kotlin.jpa)
 }
 
 group = "io.robothouse"
@@ -33,13 +34,23 @@ dependencies {
     // LangChain4j with Anthropic
     implementation(libs.langchain4j.spring.boot.starter)
     implementation(libs.langchain4j.anthropic.spring.boot.starter)
+    implementation(libs.langchain4j.pgvector)
+    implementation(libs.langchain4j.embeddings.all.minilm.l6.v2)
+
+    // JPA, Flyway & PostgreSQL
+    implementation(libs.spring.boot.starter.data.jpa)
+    implementation(libs.flyway.core)
+    runtimeOnly(libs.flyway.database.postgresql)
+    runtimeOnly(libs.postgresql)
 
     // OpenAPI documentation
     implementation(libs.springdoc.openapi)
 
     // Testing dependencies
     testImplementation(libs.spring.boot.starter.test)
+    testImplementation(libs.mockito.kotlin)
     testRuntimeOnly(libs.junit.platform.launcher)
+    testRuntimeOnly(libs.h2.database)
 }
 
 tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {

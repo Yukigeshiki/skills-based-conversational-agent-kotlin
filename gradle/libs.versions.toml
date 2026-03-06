@@ -18,11 +18,21 @@ springdoc-openapi = { group = "org.springdoc", name = "springdoc-openapi-starter
 
 langchain4j-spring-boot-starter = { group = "dev.langchain4j", name = "langchain4j-spring-boot-starter", version.ref = "langchain4j" }
 langchain4j-anthropic-spring-boot-starter = { group = "dev.langchain4j", name = "langchain4j-anthropic-spring-boot-starter", version.ref = "langchain4j" }
+langchain4j-pgvector = { group = "dev.langchain4j", name = "langchain4j-pgvector", version.ref = "langchain4j" }
+langchain4j-embeddings-all-minilm-l6-v2 = { group = "dev.langchain4j", name = "langchain4j-embeddings-all-minilm-l6-v2", version.ref = "langchain4j" }
+
+spring-boot-starter-data-jpa = { group = "org.springframework.boot", name = "spring-boot-starter-data-jpa" }
+flyway-core = { group = "org.flywaydb", name = "flyway-core" }
+flyway-database-postgresql = { group = "org.flywaydb", name = "flyway-database-postgresql" }
+postgresql = { group = "org.postgresql", name = "postgresql" }
 
 junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher" }
+mockito-kotlin = { group = "org.mockito.kotlin", name = "mockito-kotlin", version = "5.4.0" }
+h2-database = { group = "com.h2database", name = "h2" }
 
 [plugins]
 spring-boot = { id = "org.springframework.boot", version.ref = "spring-boot" }
 spring-dependency-management = { id = "io.spring.dependency-management", version.ref = "spring-dependency-management" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-spring = { id = "org.jetbrains.kotlin.plugin.spring", version.ref = "kotlin" }
+kotlin-jpa = { id = "org.jetbrains.kotlin.plugin.jpa", version.ref = "kotlin" }

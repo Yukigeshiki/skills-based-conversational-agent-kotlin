@@ -8,7 +8,11 @@ import org.springframework.context.annotation.Configuration
 @Configuration
 class ChatMemoryConfig {
 
+    companion object {
+        const val MAX_MESSAGES = 20
+    }
+
     @Bean
     fun chatMemory(): ChatMemory =
-        MessageWindowChatMemory.withMaxMessages(20)
+        MessageWindowChatMemory.withMaxMessages(MAX_MESSAGES)
 }

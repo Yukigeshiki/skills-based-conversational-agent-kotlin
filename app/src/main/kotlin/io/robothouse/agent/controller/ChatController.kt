@@ -2,7 +2,8 @@ package io.robothouse.agent.controller
 
 import io.robothouse.agent.model.ChatRequest
 import io.robothouse.agent.model.ChatResponse
-import io.robothouse.agent.service.AgentAssistant
+import io.robothouse.agent.service.DynamicAgentService
+import io.robothouse.agent.service.SkillRouterService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
@@ -19,7 +20,10 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/chat")
 @Tag(name = "Chat", description = "Agent chat endpoints")
 @Validated
-class ChatController(private val agentAssistant: AgentAssistant) {
+class ChatController(
+    private val skillRouterService: SkillRouterService,
+    private val dynamicAgentService: DynamicAgentService
+) {
 
     @Operation(summary = "Send a chat message", description = "Sends a message to the agent and returns the response")
     @ApiResponses(
@@ -31,7 +35,8 @@ class ChatController(private val agentAssistant: AgentAssistant) {
     )
     @PostMapping
     fun chat(@RequestBody @Valid request: ChatRequest): ResponseEntity<ChatResponse> {
-        val response = agentAssistant.chat(request.message)
-        return ResponseEntity.ok(ChatResponse(response))
+        val skill = skillRouterService.route(request.message)
+        val response = dynamicAgentService.chat(skill, request.message)
+        return ResponseEntity.ok(ChatResponse(response = response, skill = skill.name))
     }
 }
