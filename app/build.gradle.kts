@@ -37,6 +37,9 @@ dependencies {
     implementation(libs.langchain4j.pgvector)
     implementation(libs.langchain4j.embeddings.all.minilm.l6.v2)
 
+    // Tokenizer
+    implementation(libs.jtokkit)
+
     // JPA, Flyway & PostgreSQL
     implementation(libs.spring.boot.starter.data.jpa)
     implementation(libs.flyway.core)

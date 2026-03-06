@@ -28,7 +28,10 @@ class Skill(
 
     @Column(name = "tool_names", nullable = false)
     @Convert(converter = StringListConverter::class)
-    var toolNames: List<String> = emptyList()
+    var toolNames: List<String> = emptyList(),
+
+    @Column(name = "planning_prompt", length = MAX_SYSTEM_PROMPT_LENGTH)
+    var planningPrompt: String? = null
 ) {
     companion object {
         const val MAX_DESCRIPTION_LENGTH = 1000

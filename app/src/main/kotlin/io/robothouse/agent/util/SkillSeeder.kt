@@ -38,7 +38,26 @@ class SkillSeeder(
                 name = "general-assistant",
                 description = "A general-purpose assistant that can help with a wide variety of questions and tasks including conversation, knowledge, and analysis.",
                 systemPrompt = "You are a helpful assistant. Answer questions concisely and accurately. Use available tools when appropriate.",
-                toolNames = listOf("DateTimeTool")
+                toolNames = listOf("DateTimeTool"),
+                planningPrompt = """You are a task planner. Given a user request and a list of available tools, decompose the request into a structured plan.
+
+For simple requests that can be answered in one step, return a single-step plan.
+For complex requests that require multiple operations, break them into sequential steps.
+
+Available tools:
+{{tools}}
+
+Respond with ONLY a JSON object in this format:
+{
+  "reasoning": "Brief explanation of why this plan was chosen",
+  "steps": [
+    {
+      "stepNumber": 1,
+      "description": "What to do in this step",
+      "expectedTools": ["toolName1"]
+    }
+  ]
+}"""
             )
         )
 

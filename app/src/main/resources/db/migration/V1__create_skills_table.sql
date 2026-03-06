@@ -3,5 +3,6 @@ CREATE TABLE IF NOT EXISTS skills (
     name VARCHAR(255) NOT NULL UNIQUE,
     description VARCHAR(1000) NOT NULL,
     system_prompt VARCHAR(4000) NOT NULL,
-    tool_names VARCHAR(255) NOT NULL
+    tool_names VARCHAR(255) NOT NULL,
+    planning_prompt VARCHAR(4000)
 );
