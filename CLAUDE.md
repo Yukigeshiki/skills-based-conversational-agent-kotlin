@@ -4,9 +4,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Spring Boot 3.5.7 Kotlin service for agent development experimentation. Uses Gradle 8.14.1 with Kotlin DSL, Java 21, Kotlin 2.1.20, and virtual threads.
+Monorepo containing backend services and a UI. Backend services live in `services/`, and the frontend lives in `ui/`.
 
-## Build Commands
+## Repo Structure
+
+- `services/agent/` — Spring Boot 3.5.7 Kotlin service for agent development experimentation. Uses Gradle 8.14.1 with Kotlin DSL, Java 21, Kotlin 2.1.20, and virtual threads.
+- `ui/` — Frontend (TBD)
+
+## Agent Service
+
+### Build Commands
+
+Run from `services/agent/`:
 
 - **Build:** `./gradlew build`
 - **Run:** `./gradlew bootRun`
@@ -14,17 +23,17 @@ Spring Boot 3.5.7 Kotlin service for agent development experimentation. Uses Gra
 - **Run single test:** `./gradlew test --tests "io.robothouse.agent.ApplicationTest"`
 - **Clean:** `./gradlew clean`
 
-## Architecture
+### Architecture
 
 Single-module Gradle project (`app` subproject) with Spring Boot. Base package: `io.robothouse.agent`.
 
-- Source: `app/src/main/kotlin/io/robothouse/agent/`
-- Tests: `app/src/test/kotlin/io/robothouse/agent/` (JUnit 5/Kotlin)
-- Config: `app/src/main/resources/application.properties`
+- Source: `services/agent/app/src/main/kotlin/io/robothouse/agent/`
+- Tests: `services/agent/app/src/test/kotlin/io/robothouse/agent/` (JUnit 5/Kotlin)
+- Config: `services/agent/app/src/main/resources/application.properties`
 - Profiles: `application-production.properties`, `application-test.properties`
-- Version catalog: `gradle/libs.versions.toml`
+- Version catalog: `services/agent/gradle/libs.versions.toml`
 
-## Key Patterns
+### Key Patterns
 
 - **Testing:** JUnit 5 with Kotlin, `@SpringBootTest` and `@ActiveProfiles("test")`
 - **Logging:** kotlin-logging (`io.github.oshai.kotlinlogging`)
