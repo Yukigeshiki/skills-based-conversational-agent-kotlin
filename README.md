@@ -1,6 +1,6 @@
-# agent-experimentation-kotlin
+# skills-based-conversational-agent-kotlin
 
-Spring Boot service for agent development experimentation with embedding-based skill routing.
+A conversational agent that uses programmable skills - built with Spring Boot, Claude Sonnet 4.6 via LangChain4j Anthropic integration, and pgvector
 
 ## Overview
 

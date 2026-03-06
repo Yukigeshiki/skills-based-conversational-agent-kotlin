@@ -11,10 +11,14 @@ import dev.langchain4j.model.chat.request.ChatRequest
 import dev.langchain4j.service.tool.ToolExecutor
 import io.robothouse.agent.config.AgentProperties
 import io.robothouse.agent.entity.Skill
+import io.robothouse.agent.model.AgentIteration
 import io.robothouse.agent.model.AgentResponse
 import io.robothouse.agent.model.PlanStepResult
 import io.robothouse.agent.model.PlanStepStatus
+import io.robothouse.agent.model.TaskMemory
+import io.robothouse.agent.model.ToolCall
 import io.robothouse.agent.model.ToolExecutionStep
+import io.robothouse.agent.model.ToolObservation
 import io.robothouse.agent.repository.ToolRepository
 import io.robothouse.agent.util.log
 import org.springframework.boot.context.properties.EnableConfigurationProperties
@@ -87,7 +91,8 @@ class DynamicAgentService(
                         step = planStep,
                         status = PlanStepStatus.COMPLETED,
                         response = stepResponse.response,
-                        toolSteps = stepResponse.steps
+                        toolSteps = stepResponse.steps,
+                        iterations = stepResponse.iterations
                     )
                 )
             } catch (e: Exception) {
@@ -112,7 +117,8 @@ class DynamicAgentService(
             steps = allToolSteps,
             toolExecutionCount = allToolSteps.size,
             plan = plan,
-            planStepResults = stepResults
+            planStepResults = stepResults,
+            iterations = stepResults.flatMap { it.iterations }
         )
     }
 
@@ -134,11 +140,19 @@ class DynamicAgentService(
         )
 
         val steps = mutableListOf<ToolExecutionStep>()
+        val taskMemory = TaskMemory()
         val startTime = System.currentTimeMillis()
         val timeoutMillis = agentProperties.toolExecutionTimeoutSeconds * 1000
 
         for (iteration in 1..agentProperties.maxToolExecutions) {
             checkTimeout(startTime, timeoutMillis)
+
+            if (iteration >= 2) {
+                val scratchpad = taskMemory.toScratchpad()
+                if (scratchpad != null) {
+                    messages[0] = SystemMessage.from("$systemPrompt\n\n## Your work so far\n$scratchpad")
+                }
+            }
 
             log.debug { "Agent loop iteration $iteration for skill: name=$skillName" }
 
@@ -152,14 +166,23 @@ class DynamicAgentService(
             messages.add(aiMessage)
 
             if (!aiMessage.hasToolExecutionRequests()) {
+                taskMemory.addIteration(AgentIteration(
+                    iterationNumber = iteration,
+                    thought = aiMessage.text()
+                ))
                 log.info { "Agent completed for skill: name=$skillName, iterations=$iteration, toolExecutions=${steps.size}" }
                 return AgentResponse(
                     response = aiMessage.text() ?: "",
                     skill = skillName,
                     steps = steps,
-                    toolExecutionCount = steps.size
+                    toolExecutionCount = steps.size,
+                    iterations = taskMemory.iterations
                 )
             }
+
+            val thought = aiMessage.text()
+            val iterationToolCalls = mutableListOf<ToolCall>()
+            val iterationObservations = mutableListOf<ToolObservation>()
 
             aiMessage.toolExecutionRequests().forEach { toolRequest ->
                 log.debug { "Executing tool: name=${toolRequest.name()}, args=${toolRequest.arguments()}" }
@@ -175,9 +198,19 @@ class DynamicAgentService(
                     result = result
                 ))
 
+                iterationToolCalls.add(ToolCall(toolName = toolRequest.name(), arguments = toolRequest.arguments()))
+                iterationObservations.add(ToolObservation(toolName = toolRequest.name(), result = result))
+
                 messages.add(ToolExecutionResultMessage.from(toolRequest, result))
                 log.debug { "Tool completed: name=${toolRequest.name()}" }
             }
+
+            taskMemory.addIteration(AgentIteration(
+                iterationNumber = iteration,
+                thought = thought,
+                toolCalls = iterationToolCalls,
+                observations = iterationObservations
+            ))
         }
 
         log.warn { "Agent reached max tool executions: skill=$skillName, maxExecutions=${agentProperties.maxToolExecutions}" }
@@ -186,7 +219,8 @@ class DynamicAgentService(
             response = lastAiText.ifBlank { "I reached the maximum number of tool executions. Here's what I found so far." },
             skill = skillName,
             steps = steps,
-            toolExecutionCount = steps.size
+            toolExecutionCount = steps.size,
+            iterations = taskMemory.iterations
         )
     }
 

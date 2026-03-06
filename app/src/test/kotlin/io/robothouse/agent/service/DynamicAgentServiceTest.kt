@@ -7,6 +7,7 @@ import dev.langchain4j.model.chat.ChatModel
 import dev.langchain4j.model.chat.request.ChatRequest
 import dev.langchain4j.model.chat.response.ChatResponse
 import dev.langchain4j.service.tool.ToolExecutor
+import dev.langchain4j.data.message.SystemMessage
 import io.robothouse.agent.config.AgentProperties
 import io.robothouse.agent.entity.Skill
 import io.robothouse.agent.model.PlanStep
@@ -16,6 +17,7 @@ import io.robothouse.agent.repository.ToolRepository
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.mockito.kotlin.any
@@ -99,6 +101,14 @@ class DynamicAgentServiceTest {
         assertEquals(1, result.toolExecutionCount)
         assertEquals("getCurrentDateTime", result.steps[0].toolName)
         assertEquals("2026-03-06 18:00:00 JST", result.steps[0].result)
+
+        assertEquals(2, result.iterations.size)
+        assertEquals(1, result.iterations[0].iterationNumber)
+        assertEquals("getCurrentDateTime", result.iterations[0].toolCalls[0].toolName)
+        assertEquals("2026-03-06 18:00:00 JST", result.iterations[0].observations[0].result)
+        assertEquals(2, result.iterations[1].iterationNumber)
+        assertEquals("The time in Tokyo is 18:00.", result.iterations[1].thought)
+        assertTrue(result.iterations[1].toolCalls.isEmpty())
     }
 
     @Test
@@ -223,6 +233,10 @@ class DynamicAgentServiceTest {
         assertEquals(PlanStepStatus.COMPLETED, result.planStepResults!![1].status)
         assertEquals("NYC: 10am", result.planStepResults!![0].response)
         assertEquals("Tokyo: 11pm", result.planStepResults!![1].response)
+
+        assertEquals(1, result.planStepResults!![0].iterations.size)
+        assertEquals(1, result.planStepResults!![1].iterations.size)
+        assertEquals(2, result.iterations.size)
     }
 
     @Test
@@ -266,5 +280,73 @@ class DynamicAgentServiceTest {
         assertEquals(2, result.planStepResults!!.size)
         assertEquals(PlanStepStatus.FAILED, result.planStepResults!![0].status)
         assertEquals(PlanStepStatus.COMPLETED, result.planStepResults!![1].status)
+    }
+
+    @Test
+    fun `captures thought when AI returns text alongside tool calls`() {
+        val toolSpec = ToolSpecification.builder().name("myTool").description("A tool").build()
+        whenever(toolRepository.getSpecificationsByNames(any())).thenReturn(listOf(toolSpec))
+
+        val executor: ToolExecutor = mock()
+        whenever(executor.execute(any(), anyOrNull())).thenReturn("tool result")
+        whenever(toolRepository.getExecutorsByNames(any())).thenReturn(mapOf("myTool" to executor))
+
+        val toolRequest = ToolExecutionRequest.builder()
+            .name("myTool")
+            .arguments("{}")
+            .build()
+        val model = fakeChatModel(
+            ChatResponse.builder()
+                .aiMessage(AiMessage("Let me look that up", listOf(toolRequest)))
+                .build(),
+            ChatResponse.builder().aiMessage(AiMessage.from("Here's the answer.")).build()
+        )
+        val service = DynamicAgentService(model, toolRepository, agentProperties, taskPlanningService)
+
+        val result = service.chat(skill, "Help me")
+
+        assertEquals(2, result.iterations.size)
+        assertEquals("Let me look that up", result.iterations[0].thought)
+        assertEquals(1, result.iterations[0].toolCalls.size)
+        assertEquals("Here's the answer.", result.iterations[1].thought)
+    }
+
+    @Test
+    fun `injects scratchpad into system message on iteration 2+`() {
+        val toolSpec = ToolSpecification.builder().name("myTool").description("A tool").build()
+        whenever(toolRepository.getSpecificationsByNames(any())).thenReturn(listOf(toolSpec))
+
+        val executor: ToolExecutor = mock()
+        whenever(executor.execute(any(), anyOrNull())).thenReturn("tool result")
+        whenever(toolRepository.getExecutorsByNames(any())).thenReturn(mapOf("myTool" to executor))
+
+        val toolRequest = ToolExecutionRequest.builder()
+            .name("myTool")
+            .arguments("{}")
+            .build()
+
+        val capturedSystemMessages = mutableListOf<String>()
+        val responseList = listOf(
+            ChatResponse.builder()
+                .aiMessage(AiMessage(null, listOf(toolRequest)))
+                .build(),
+            ChatResponse.builder().aiMessage(AiMessage.from("Done.")).build()
+        )
+        var responseIndex = 0
+        val model = object : ChatModel {
+            override fun doChat(request: ChatRequest): ChatResponse {
+                val sysMsg = request.messages().filterIsInstance<SystemMessage>().first().text()
+                capturedSystemMessages.add(sysMsg)
+                return responseList[responseIndex++]
+            }
+        }
+        val service = DynamicAgentService(model, toolRepository, agentProperties, taskPlanningService)
+
+        service.chat(skill, "Do something")
+
+        assertEquals(2, capturedSystemMessages.size)
+        assertTrue(!capturedSystemMessages[0].contains("Your work so far"))
+        assertTrue(capturedSystemMessages[1].contains("## Your work so far"))
+        assertTrue(capturedSystemMessages[1].contains("--- Iteration 1 ---"))
     }
 }

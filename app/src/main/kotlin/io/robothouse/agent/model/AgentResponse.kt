@@ -10,7 +10,8 @@ data class AgentResponse(
     val steps: List<ToolExecutionStep> = emptyList(),
     val toolExecutionCount: Int = 0,
     val plan: TaskPlan? = null,
-    val planStepResults: List<PlanStepResult>? = null
+    val planStepResults: List<PlanStepResult>? = null,
+    val iterations: List<AgentIteration> = emptyList()
 )
 
 /**
@@ -49,7 +50,8 @@ data class PlanStepResult(
     val step: PlanStep,
     val status: PlanStepStatus,
     val response: String,
-    val toolSteps: List<ToolExecutionStep> = emptyList()
+    val toolSteps: List<ToolExecutionStep> = emptyList(),
+    val iterations: List<AgentIteration> = emptyList()
 )
 
 /**
