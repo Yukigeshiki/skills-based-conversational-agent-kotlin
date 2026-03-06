@@ -9,7 +9,9 @@ import dev.langchain4j.model.chat.response.ChatResponse
 import dev.langchain4j.service.tool.ToolExecutor
 import dev.langchain4j.data.message.SystemMessage
 import io.robothouse.agent.config.AgentProperties
+import io.robothouse.agent.listener.AgentEventListener
 import io.robothouse.agent.entity.Skill
+import io.robothouse.agent.model.AgentEvent
 import io.robothouse.agent.model.PlanStep
 import io.robothouse.agent.model.PlanStepStatus
 import io.robothouse.agent.model.TaskPlan
@@ -396,6 +398,133 @@ class DynamicAgentServiceTest {
         assertEquals(2, capturedSystemMessages.size)
         assertTrue(capturedSystemMessages[1].contains("ERROR [errorTool]"))
         assertTrue(capturedSystemMessages[1].contains("Decision guidance"))
+    }
+
+    @Test
+    fun `listener receives events for simple chat`() {
+        whenever(toolRepository.getSpecificationsByNames(any())).thenReturn(emptyList())
+        whenever(toolRepository.getExecutorsByNames(any())).thenReturn(emptyMap())
+
+        val model = fakeChatModel(
+            ChatResponse.builder().aiMessage(AiMessage.from("Hello!")).build()
+        )
+        val service = DynamicAgentService(model, toolRepository, agentProperties, taskPlanningService)
+
+        val events = mutableListOf<AgentEvent>()
+        service.chat(skill, "Hi", AgentEventListener { events.add(it) })
+
+        assertTrue(events.any { it is AgentEvent.IterationStartedEvent })
+        assertTrue(events.any { it is AgentEvent.FinalResponseEvent })
+        val iterationEvent = events.filterIsInstance<AgentEvent.IterationStartedEvent>().first()
+        assertEquals(1, iterationEvent.iterationNumber)
+    }
+
+    @Test
+    fun `listener receives tool call events`() {
+        val toolSpec = ToolSpecification.builder().name("myTool").description("A tool").build()
+        whenever(toolRepository.getSpecificationsByNames(any())).thenReturn(listOf(toolSpec))
+
+        val executor: ToolExecutor = mock()
+        whenever(executor.execute(any(), anyOrNull())).thenReturn("result")
+        whenever(toolRepository.getExecutorsByNames(any())).thenReturn(mapOf("myTool" to executor))
+
+        val toolRequest = ToolExecutionRequest.builder().name("myTool").arguments("{}").build()
+        val model = fakeChatModel(
+            ChatResponse.builder().aiMessage(AiMessage.from(listOf(toolRequest))).build(),
+            ChatResponse.builder().aiMessage(AiMessage.from("Done.")).build()
+        )
+        val service = DynamicAgentService(model, toolRepository, agentProperties, taskPlanningService)
+
+        val events = mutableListOf<AgentEvent>()
+        service.chat(skill, "Do it", AgentEventListener { events.add(it) })
+
+        assertTrue(events.any { it is AgentEvent.ToolCallStartedEvent })
+        assertTrue(events.any { it is AgentEvent.ToolCallCompletedEvent })
+        val started = events.filterIsInstance<AgentEvent.ToolCallStartedEvent>().first()
+        assertEquals("myTool", started.toolName)
+        val completed = events.filterIsInstance<AgentEvent.ToolCallCompletedEvent>().first()
+        assertEquals("myTool", completed.toolName)
+        assertEquals("result", completed.result)
+    }
+
+    @Test
+    fun `listener receives plan events with single FinalResponseEvent`() {
+        whenever(toolRepository.getSpecificationsByNames(any())).thenReturn(emptyList())
+        whenever(toolRepository.getExecutorsByNames(any())).thenReturn(emptyMap())
+
+        val multiStepPlan = TaskPlan(
+            steps = listOf(
+                PlanStep(stepNumber = 1, description = "Step one"),
+                PlanStep(stepNumber = 2, description = "Step two")
+            ),
+            reasoning = "Two steps"
+        )
+        whenever(taskPlanningService.createPlan(any(), any(), any())).thenReturn(multiStepPlan)
+
+        val model = fakeChatModel(
+            ChatResponse.builder().aiMessage(AiMessage.from("One")).build(),
+            ChatResponse.builder().aiMessage(AiMessage.from("Two")).build(),
+            ChatResponse.builder().aiMessage(AiMessage.from("Synthesis")).build()
+        )
+        val service = DynamicAgentService(model, toolRepository, agentProperties, taskPlanningService)
+
+        val events = mutableListOf<AgentEvent>()
+        service.chat(skillWithPlanning, "Do two things", AgentEventListener { events.add(it) })
+
+        assertTrue(events.any { it is AgentEvent.PlanCreatedEvent })
+        assertEquals(2, events.filterIsInstance<AgentEvent.PlanStepStartedEvent>().size)
+        assertEquals(2, events.filterIsInstance<AgentEvent.PlanStepCompletedEvent>().size)
+        assertEquals(1, events.filterIsInstance<AgentEvent.FinalResponseEvent>().size)
+        assertEquals("Synthesis", events.filterIsInstance<AgentEvent.FinalResponseEvent>().first().response)
+    }
+
+    @Test
+    fun `listener exception does not break agent loop`() {
+        whenever(toolRepository.getSpecificationsByNames(any())).thenReturn(emptyList())
+        whenever(toolRepository.getExecutorsByNames(any())).thenReturn(emptyMap())
+
+        val model = fakeChatModel(
+            ChatResponse.builder().aiMessage(AiMessage.from("Hello!")).build()
+        )
+        val service = DynamicAgentService(model, toolRepository, agentProperties, taskPlanningService)
+
+        val result = service.chat(skill, "Hi", AgentEventListener { throw RuntimeException("Listener broke") })
+
+        assertEquals("Hello!", result.response)
+    }
+
+    @Test
+    fun `listener events are emitted in correct order`() {
+        val toolSpec = ToolSpecification.builder().name("myTool").description("A tool").build()
+        whenever(toolRepository.getSpecificationsByNames(any())).thenReturn(listOf(toolSpec))
+
+        val executor: ToolExecutor = mock()
+        whenever(executor.execute(any(), anyOrNull())).thenReturn("result")
+        whenever(toolRepository.getExecutorsByNames(any())).thenReturn(mapOf("myTool" to executor))
+
+        val toolRequest = ToolExecutionRequest.builder().name("myTool").arguments("{}").build()
+        val model = fakeChatModel(
+            ChatResponse.builder().aiMessage(AiMessage("Let me check", listOf(toolRequest))).build(),
+            ChatResponse.builder().aiMessage(AiMessage.from("Done.")).build()
+        )
+        val service = DynamicAgentService(model, toolRepository, agentProperties, taskPlanningService)
+
+        val events = mutableListOf<AgentEvent>()
+        service.chat(skill, "Do it", AgentEventListener { events.add(it) })
+
+        val eventTypes = events.map { it.type }
+        assertEquals(
+            listOf(
+                "iteration_started",
+                "thought",
+                "tool_call_started",
+                "tool_call_completed",
+                "iteration_started",
+                "thought",
+                "final_response"
+            ),
+            eventTypes
+        )
     }
 
     @Test

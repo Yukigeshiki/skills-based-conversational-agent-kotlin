@@ -10,7 +10,9 @@ import dev.langchain4j.model.chat.ChatModel
 import dev.langchain4j.model.chat.request.ChatRequest
 import dev.langchain4j.service.tool.ToolExecutor
 import io.robothouse.agent.config.AgentProperties
+import io.robothouse.agent.listener.AgentEventListener
 import io.robothouse.agent.entity.Skill
+import io.robothouse.agent.model.AgentEvent
 import io.robothouse.agent.model.AgentIteration
 import io.robothouse.agent.model.AgentResponse
 import io.robothouse.agent.model.PlanStepResult
@@ -48,21 +50,22 @@ class DynamicAgentService(
      * plan and executes each step sequentially. Otherwise, executes directly
      * in a single agent loop.
      */
-    fun chat(skill: Skill, userMessage: String): AgentResponse {
+    fun chat(skill: Skill, userMessage: String, listener: AgentEventListener = AgentEventListener.NOOP): AgentResponse {
         log.debug { "Processing chat request for skill: name=${skill.name}, tools=${skill.toolNames}" }
 
         val specifications = toolRepository.getSpecificationsByNames(skill.toolNames)
         val executors = toolRepository.getExecutorsByNames(skill.toolNames)
 
         if (skill.planningPrompt == null) {
-            return executeStep(skill.systemPrompt, userMessage, specifications, executors, skill.name)
+            return executeStep(skill.systemPrompt, userMessage, specifications, executors, skill.name, listener)
         }
 
         val plan = taskPlanningService.createPlan(skill.planningPrompt!!, userMessage, specifications)
         log.debug { "Created plan with ${plan.steps.size} step(s): ${plan.reasoning}" }
+        emitEvent(listener) { AgentEvent.PlanCreatedEvent(plan = plan) }
 
         if (plan.steps.size <= 1) {
-            val response = executeStep(skill.systemPrompt, userMessage, specifications, executors, skill.name)
+            val response = executeStep(skill.systemPrompt, userMessage, specifications, executors, skill.name, listener)
             return response.copy(plan = plan)
         }
 
@@ -71,6 +74,7 @@ class DynamicAgentService(
 
         for (planStep in plan.steps) {
             log.debug { "Executing plan step ${planStep.stepNumber}: ${planStep.description}" }
+            emitEvent(listener) { AgentEvent.PlanStepStartedEvent(stepNumber = planStep.stepNumber, description = planStep.description) }
 
             val priorContext = if (stepResults.isNotEmpty()) {
                 val priorSummary = stepResults.joinToString("\n") { result ->
@@ -83,18 +87,18 @@ class DynamicAgentService(
 
             try {
                 val stepResponse = executeStep(
-                    skill.systemPrompt, priorContext, specifications, executors, skill.name
+                    skill.systemPrompt, priorContext, specifications, executors, skill.name, listener, emitFinalResponse = false
                 )
                 allToolSteps.addAll(stepResponse.steps)
-                stepResults.add(
-                    PlanStepResult(
-                        step = planStep,
-                        status = PlanStepStatus.COMPLETED,
-                        response = stepResponse.response,
-                        toolSteps = stepResponse.steps,
-                        iterations = stepResponse.iterations
-                    )
+                val stepResult = PlanStepResult(
+                    step = planStep,
+                    status = PlanStepStatus.COMPLETED,
+                    response = stepResponse.response,
+                    toolSteps = stepResponse.steps,
+                    iterations = stepResponse.iterations
                 )
+                stepResults.add(stepResult)
+                emitEvent(listener) { AgentEvent.PlanStepCompletedEvent(stepNumber = planStep.stepNumber, status = PlanStepStatus.COMPLETED, response = stepResponse.response) }
             } catch (e: Exception) {
                 log.warn { "Plan step ${planStep.stepNumber} failed for skill: name=${skill.name}, error: ${e.message}" }
                 stepResults.add(
@@ -104,6 +108,7 @@ class DynamicAgentService(
                         response = e.message ?: "Step failed"
                     )
                 )
+                emitEvent(listener) { AgentEvent.PlanStepCompletedEvent(stepNumber = planStep.stepNumber, status = PlanStepStatus.FAILED, response = e.message ?: "Step failed") }
             }
         }
 
@@ -111,7 +116,7 @@ class DynamicAgentService(
         val synthesisResponse = synthesizeResults(skill.systemPrompt, userMessage, stepResults)
 
         log.info { "Completed planned chat for skill: name=${skill.name}, steps=${plan.steps.size}, toolExecutions=${allToolSteps.size}" }
-        return AgentResponse(
+        val agentResponse = AgentResponse(
             response = synthesisResponse,
             skill = skill.name,
             steps = allToolSteps,
@@ -120,6 +125,8 @@ class DynamicAgentService(
             planStepResults = stepResults,
             iterations = stepResults.flatMap { it.iterations }
         )
+        emitEvent(listener) { AgentEvent.FinalResponseEvent(response = agentResponse.response, skill = agentResponse.skill) }
+        return agentResponse
     }
 
     /**
@@ -132,7 +139,9 @@ class DynamicAgentService(
         userMessage: String,
         specifications: List<ToolSpecification>,
         executors: Map<String, ToolExecutor>,
-        skillName: String
+        skillName: String,
+        listener: AgentEventListener = AgentEventListener.NOOP,
+        emitFinalResponse: Boolean = true
     ): AgentResponse {
         val messages = mutableListOf<ChatMessage>(
             SystemMessage.from(systemPrompt),
@@ -155,6 +164,7 @@ class DynamicAgentService(
             }
 
             log.debug { "Agent loop iteration $iteration for skill: name=$skillName" }
+            emitEvent(listener) { AgentEvent.IterationStartedEvent(iterationNumber = iteration) }
 
             val request = ChatRequest.builder()
                 .messages(messages)
@@ -170,22 +180,33 @@ class DynamicAgentService(
                     iterationNumber = iteration,
                     thought = aiMessage.text()
                 ))
+                if (!aiMessage.text().isNullOrBlank()) {
+                    emitEvent(listener) { AgentEvent.ThoughtEvent(iterationNumber = iteration, thought = aiMessage.text()) }
+                }
                 log.info { "Agent completed for skill: name=$skillName, iterations=$iteration, toolExecutions=${steps.size}" }
-                return AgentResponse(
+                val agentResponse = AgentResponse(
                     response = aiMessage.text() ?: "",
                     skill = skillName,
                     steps = steps,
                     toolExecutionCount = steps.size,
                     iterations = taskMemory.iterations
                 )
+                if (emitFinalResponse) {
+                    emitEvent(listener) { AgentEvent.FinalResponseEvent(response = agentResponse.response, skill = agentResponse.skill) }
+                }
+                return agentResponse
             }
 
             val thought = aiMessage.text()
+            if (!thought.isNullOrBlank()) {
+                emitEvent(listener) { AgentEvent.ThoughtEvent(iterationNumber = iteration, thought = thought) }
+            }
             val iterationToolCalls = mutableListOf<ToolCall>()
             val iterationObservations = mutableListOf<ToolObservation>()
 
             aiMessage.toolExecutionRequests().forEach { toolRequest ->
                 log.debug { "Executing tool: name=${toolRequest.name()}, args=${toolRequest.arguments()}" }
+                emitEvent(listener) { AgentEvent.ToolCallStartedEvent(iterationNumber = iteration, toolName = toolRequest.name(), arguments = toolRequest.arguments()) }
 
                 val executor = executors[toolRequest.name()]
 
@@ -200,6 +221,8 @@ class DynamicAgentService(
                         Pair("Error executing tool '${toolRequest.name()}': ${e.message}", true)
                     }
                 }
+
+                emitEvent(listener) { AgentEvent.ToolCallCompletedEvent(iterationNumber = iteration, toolName = toolRequest.name(), result = result, error = isError) }
 
                 steps.add(ToolExecutionStep(
                     toolName = toolRequest.name(),
@@ -225,13 +248,17 @@ class DynamicAgentService(
 
         log.warn { "Agent reached max tool executions: skill=$skillName, maxExecutions=${agentProperties.maxToolExecutions}" }
         val lastAiText = messages.filterIsInstance<AiMessage>().lastOrNull()?.text() ?: ""
-        return AgentResponse(
+        val agentResponse = AgentResponse(
             response = lastAiText.ifBlank { "I reached the maximum number of tool executions. Here's what I found so far." },
             skill = skillName,
             steps = steps,
             toolExecutionCount = steps.size,
             iterations = taskMemory.iterations
         )
+        if (emitFinalResponse) {
+            emitEvent(listener) { AgentEvent.FinalResponseEvent(response = agentResponse.response, skill = agentResponse.skill) }
+        }
+        return agentResponse
     }
 
     /**
@@ -276,6 +303,18 @@ class DynamicAgentService(
             return "I was unable to synthesize a response from the plan step results."
         }
         return text
+    }
+
+    /**
+     * Safely delivers an event to the listener, catching and logging any
+     * exception so that a faulty listener never interrupts the agent loop.
+     */
+    private fun emitEvent(listener: AgentEventListener, eventSupplier: () -> AgentEvent) {
+        try {
+            listener.onEvent(eventSupplier())
+        } catch (e: Exception) {
+            log.warn { "AgentEventListener threw: ${e.message}" }
+        }
     }
 
     private fun checkTimeout(startTime: Long, timeoutMillis: Long) {

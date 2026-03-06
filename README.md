@@ -1,6 +1,6 @@
 # skills-based-conversational-agent-kotlin
 
-A conversational agent that uses programmable skills - built with Spring Boot, Claude Sonnet 4.6 via LangChain4j Anthropic integration, and pgvector
+A conversational agent that uses programmable skills - built with Spring Boot, Claude Sonnet 4.6 via LangChain4j Anthropic integration, and pgvector embeddings
 
 ## Overview
 
