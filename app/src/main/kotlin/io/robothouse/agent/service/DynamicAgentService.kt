@@ -29,7 +29,7 @@ import java.util.concurrent.TimeoutException
  * Executes agent interactions for a given skill by running an LLM tool-execution loop.
  *
  * Supports optional task planning: skills with a planning prompt are decomposed
- * into multi-step plans before execution, with results synthesized into a final response.
+ * into multistep plans before execution, with results synthesized into a final response.
  * Skills without a planning prompt execute directly in a single agent loop.
  */
 @Service
@@ -44,7 +44,7 @@ class DynamicAgentService(
     /**
      * Processes a chat request for the given skill.
      *
-     * If the skill has a planning prompt, decomposes the request into a multi-step
+     * If the skill has a planning prompt, decomposes the request into a multistep
      * plan and executes each step sequentially. Otherwise, executes directly
      * in a single agent loop.
      */
@@ -188,21 +188,31 @@ class DynamicAgentService(
                 log.debug { "Executing tool: name=${toolRequest.name()}, args=${toolRequest.arguments()}" }
 
                 val executor = executors[toolRequest.name()]
-                    ?: throw IllegalStateException("No executor found for tool: ${toolRequest.name()}")
 
-                val result = executor.execute(toolRequest, null)
+                val (result, isError) = if (executor == null) {
+                    log.warn { "No executor found for tool: ${toolRequest.name()}" }
+                    Pair("Error: No tool named '${toolRequest.name()}' is available. Available tools: ${executors.keys.joinToString(", ")}", true)
+                } else {
+                    try {
+                        Pair(executor.execute(toolRequest, null), false)
+                    } catch (e: Exception) {
+                        log.warn { "Tool execution failed: name=${toolRequest.name()}, error=${e.message}" }
+                        Pair("Error executing tool '${toolRequest.name()}': ${e.message}", true)
+                    }
+                }
 
                 steps.add(ToolExecutionStep(
                     toolName = toolRequest.name(),
                     arguments = toolRequest.arguments(),
-                    result = result
+                    result = result,
+                    error = isError
                 ))
 
                 iterationToolCalls.add(ToolCall(toolName = toolRequest.name(), arguments = toolRequest.arguments()))
-                iterationObservations.add(ToolObservation(toolName = toolRequest.name(), result = result))
+                iterationObservations.add(ToolObservation(toolName = toolRequest.name(), result = result, error = isError))
 
                 messages.add(ToolExecutionResultMessage.from(toolRequest, result))
-                log.debug { "Tool completed: name=${toolRequest.name()}" }
+                log.debug { "Tool completed: name=${toolRequest.name()}, error=$isError" }
             }
 
             taskMemory.addIteration(AgentIteration(

@@ -20,7 +20,8 @@ data class AgentResponse(
 data class ToolExecutionStep(
     val toolName: String,
     val arguments: String,
-    val result: String
+    val result: String,
+    val error: Boolean = false
 )
 
 /**
@@ -58,5 +59,5 @@ data class PlanStepResult(
  * Execution status of a plan step.
  */
 enum class PlanStepStatus {
-    COMPLETED, FAILED, SKIPPED
+    COMPLETED, FAILED
 }

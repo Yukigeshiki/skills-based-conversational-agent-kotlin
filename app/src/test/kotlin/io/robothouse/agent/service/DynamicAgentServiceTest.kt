@@ -240,14 +240,14 @@ class DynamicAgentServiceTest {
     }
 
     @Test
-    fun `step failure captured as FAILED without aborting remaining steps`() {
+    fun `step with missing tool recovers and completes`() {
         val toolSpec = ToolSpecification.builder().name("failTool").description("Fails").build()
         whenever(toolRepository.getSpecificationsByNames(any())).thenReturn(listOf(toolSpec))
         whenever(toolRepository.getExecutorsByNames(any())).thenReturn(emptyMap())
 
         val multiStepPlan = TaskPlan(
             steps = listOf(
-                PlanStep(stepNumber = 1, description = "This will fail", expectedTools = listOf("failTool")),
+                PlanStep(stepNumber = 1, description = "This will have a missing tool", expectedTools = listOf("failTool")),
                 PlanStep(stepNumber = 2, description = "This will succeed")
             ),
             reasoning = "Two steps"
@@ -260,14 +260,14 @@ class DynamicAgentServiceTest {
                 callCount++
                 return when (callCount) {
                     1 -> {
-                        // First step: return a tool call that will fail (no executor)
                         val toolRequest = ToolExecutionRequest.builder()
                             .name("failTool")
                             .arguments("{}")
                             .build()
                         ChatResponse.builder().aiMessage(AiMessage.from(listOf(toolRequest))).build()
                     }
-                    2 -> ChatResponse.builder().aiMessage(AiMessage.from("Step 2 done")).build()
+                    2 -> ChatResponse.builder().aiMessage(AiMessage.from("I couldn't find that tool")).build()
+                    3 -> ChatResponse.builder().aiMessage(AiMessage.from("Step 2 done")).build()
                     else -> ChatResponse.builder().aiMessage(AiMessage.from("Synthesis")).build()
                 }
             }
@@ -278,7 +278,7 @@ class DynamicAgentServiceTest {
 
         assertNotNull(result.planStepResults)
         assertEquals(2, result.planStepResults!!.size)
-        assertEquals(PlanStepStatus.FAILED, result.planStepResults!![0].status)
+        assertEquals(PlanStepStatus.COMPLETED, result.planStepResults!![0].status)
         assertEquals(PlanStepStatus.COMPLETED, result.planStepResults!![1].status)
     }
 
@@ -309,6 +309,93 @@ class DynamicAgentServiceTest {
         assertEquals("Let me look that up", result.iterations[0].thought)
         assertEquals(1, result.iterations[0].toolCalls.size)
         assertEquals("Here's the answer.", result.iterations[1].thought)
+    }
+
+    @Test
+    fun `missing executor feeds error back to LLM instead of throwing`() {
+        val toolSpec = ToolSpecification.builder().name("realTool").description("A tool").build()
+        whenever(toolRepository.getSpecificationsByNames(any())).thenReturn(listOf(toolSpec))
+        whenever(toolRepository.getExecutorsByNames(any())).thenReturn(emptyMap())
+
+        val toolRequest = ToolExecutionRequest.builder()
+            .name("fakeTool")
+            .arguments("{}")
+            .build()
+        val model = fakeChatModel(
+            ChatResponse.builder().aiMessage(AiMessage.from(listOf(toolRequest))).build(),
+            ChatResponse.builder().aiMessage(AiMessage.from("Sorry, that tool doesn't exist.")).build()
+        )
+        val service = DynamicAgentService(model, toolRepository, agentProperties, taskPlanningService)
+
+        val result = service.chat(skill, "Use a tool")
+
+        assertEquals("Sorry, that tool doesn't exist.", result.response)
+        assertEquals(1, result.steps.size)
+        assertTrue(result.steps[0].error)
+        assertTrue(result.steps[0].result.contains("No tool named 'fakeTool'"))
+    }
+
+    @Test
+    fun `executor exception feeds error back to LLM instead of throwing`() {
+        val toolSpec = ToolSpecification.builder().name("crashTool").description("Crashes").build()
+        whenever(toolRepository.getSpecificationsByNames(any())).thenReturn(listOf(toolSpec))
+
+        val executor: ToolExecutor = mock()
+        whenever(executor.execute(any(), anyOrNull())).thenThrow(RuntimeException("Connection refused"))
+        whenever(toolRepository.getExecutorsByNames(any())).thenReturn(mapOf("crashTool" to executor))
+
+        val toolRequest = ToolExecutionRequest.builder()
+            .name("crashTool")
+            .arguments("{}")
+            .build()
+        val model = fakeChatModel(
+            ChatResponse.builder().aiMessage(AiMessage.from(listOf(toolRequest))).build(),
+            ChatResponse.builder().aiMessage(AiMessage.from("The tool crashed, sorry.")).build()
+        )
+        val service = DynamicAgentService(model, toolRepository, agentProperties, taskPlanningService)
+
+        val result = service.chat(skill, "Run the tool")
+
+        assertEquals("The tool crashed, sorry.", result.response)
+        assertEquals(1, result.steps.size)
+        assertTrue(result.steps[0].error)
+        assertTrue(result.steps[0].result.contains("Connection refused"))
+    }
+
+    @Test
+    fun `error observations appear in scratchpad on subsequent iterations`() {
+        val toolSpec = ToolSpecification.builder().name("errorTool").description("Errors").build()
+        whenever(toolRepository.getSpecificationsByNames(any())).thenReturn(listOf(toolSpec))
+
+        val executor: ToolExecutor = mock()
+        whenever(executor.execute(any(), anyOrNull())).thenThrow(RuntimeException("Boom"))
+        whenever(toolRepository.getExecutorsByNames(any())).thenReturn(mapOf("errorTool" to executor))
+
+        val toolRequest = ToolExecutionRequest.builder()
+            .name("errorTool")
+            .arguments("{}")
+            .build()
+
+        val capturedSystemMessages = mutableListOf<String>()
+        val responseList = listOf(
+            ChatResponse.builder().aiMessage(AiMessage.from(listOf(toolRequest))).build(),
+            ChatResponse.builder().aiMessage(AiMessage.from("I see the error.")).build()
+        )
+        var responseIndex = 0
+        val model = object : ChatModel {
+            override fun doChat(request: ChatRequest): ChatResponse {
+                val sysMsg = request.messages().filterIsInstance<SystemMessage>().first().text()
+                capturedSystemMessages.add(sysMsg)
+                return responseList[responseIndex++]
+            }
+        }
+        val service = DynamicAgentService(model, toolRepository, agentProperties, taskPlanningService)
+
+        service.chat(skill, "Try the tool")
+
+        assertEquals(2, capturedSystemMessages.size)
+        assertTrue(capturedSystemMessages[1].contains("ERROR [errorTool]"))
+        assertTrue(capturedSystemMessages[1].contains("Decision guidance"))
     }
 
     @Test

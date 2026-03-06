@@ -94,4 +94,74 @@ class TaskMemoryTest {
         assertEquals(1, memory.iterations.size)
         assertEquals("test", memory.iterations[0].thought)
     }
+
+    @Test
+    fun `formats error observations with ERROR prefix`() {
+        val memory = TaskMemory()
+        memory.addIteration(AgentIteration(
+            iterationNumber = 1,
+            thought = "Trying tool",
+            toolCalls = listOf(ToolCall("badTool", "{}")),
+            observations = listOf(ToolObservation("badTool", "Something went wrong", error = true))
+        ))
+
+        val scratchpad = memory.toScratchpad()!!
+
+        assertTrue(scratchpad.contains("ERROR [badTool]: Something went wrong"))
+        assertTrue(!scratchpad.contains("Observation [badTool]"))
+    }
+
+    @Test
+    fun `includes decision guidance when errors present`() {
+        val memory = TaskMemory()
+        memory.addIteration(AgentIteration(
+            iterationNumber = 1,
+            thought = null,
+            toolCalls = listOf(ToolCall("failTool", "{}")),
+            observations = listOf(ToolObservation("failTool", "failed", error = true))
+        ))
+
+        val scratchpad = memory.toScratchpad()!!
+
+        assertTrue(scratchpad.contains("## Decision guidance"))
+        assertTrue(scratchpad.contains("Retrying with different arguments"))
+    }
+
+    @Test
+    fun `omits decision guidance when no errors`() {
+        val memory = TaskMemory()
+        memory.addIteration(AgentIteration(
+            iterationNumber = 1,
+            thought = "All good",
+            toolCalls = listOf(ToolCall("goodTool", "{}")),
+            observations = listOf(ToolObservation("goodTool", "success"))
+        ))
+
+        val scratchpad = memory.toScratchpad()!!
+
+        assertTrue(!scratchpad.contains("Decision guidance"))
+    }
+
+    @Test
+    fun `mixed success and error observations formatted correctly`() {
+        val memory = TaskMemory()
+        memory.addIteration(AgentIteration(
+            iterationNumber = 1,
+            thought = "Running tools",
+            toolCalls = listOf(
+                ToolCall("goodTool", "{}"),
+                ToolCall("badTool", "{}")
+            ),
+            observations = listOf(
+                ToolObservation("goodTool", "ok"),
+                ToolObservation("badTool", "failed", error = true)
+            )
+        ))
+
+        val scratchpad = memory.toScratchpad()!!
+
+        assertTrue(scratchpad.contains("Observation [goodTool]: ok"))
+        assertTrue(scratchpad.contains("ERROR [badTool]: failed"))
+        assertTrue(scratchpad.contains("## Decision guidance"))
+    }
 }
