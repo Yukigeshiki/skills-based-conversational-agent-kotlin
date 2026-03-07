@@ -520,7 +520,6 @@ class DynamicAgentServiceTest {
                 "tool_call_started",
                 "tool_call_completed",
                 "iteration_started",
-                "thought",
                 "final_response"
             ),
             eventTypes

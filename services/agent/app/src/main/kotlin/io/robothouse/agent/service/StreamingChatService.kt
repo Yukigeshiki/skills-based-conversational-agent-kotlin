@@ -69,8 +69,10 @@ class StreamingChatService(
                             .name("error")
                             .data(objectMapper.writeValueAsString(AgentEvent.ErrorEvent(message = e.message ?: "Unknown error")))
                     )
-                } catch (_: Exception) { }
-                emitter.completeWithError(e)
+                    emitter.complete()
+                } catch (_: Exception) {
+                    emitter.completeWithError(e)
+                }
             }
         }
 

@@ -180,9 +180,6 @@ class DynamicAgentService(
                     iterationNumber = iteration,
                     thought = aiMessage.text()
                 ))
-                if (!aiMessage.text().isNullOrBlank()) {
-                    emitEvent(listener) { AgentEvent.ThoughtEvent(iterationNumber = iteration, thought = aiMessage.text()) }
-                }
                 log.info { "Agent completed for skill: name=$skillName, iterations=$iteration, toolExecutions=${steps.size}" }
                 val agentResponse = AgentResponse(
                     response = aiMessage.text() ?: "",
