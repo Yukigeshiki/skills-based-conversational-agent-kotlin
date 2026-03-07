@@ -1,3 +1,4 @@
+/** Full skill entity as returned by the backend API. */
 export interface Skill {
   id: string
   name: string
@@ -9,6 +10,7 @@ export interface Skill {
   updatedAt: string
 }
 
+/** Lightweight skill projection without the system prompt or planning prompt. */
 export interface SkillSummary {
   id: string
   name: string

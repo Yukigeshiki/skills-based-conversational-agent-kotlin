@@ -56,6 +56,10 @@
   </div>
 </template>
 
+/**
+ * Pagination controls with page-size selector, record count display,
+ * previous/next buttons, and a direct page-number input.
+ */
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
@@ -63,16 +67,32 @@ import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 interface Props {
+  /** Zero-based current page index. */
   currentPage: number
+  /** Total number of pages. */
   totalPages: number
+  /** Current page size as a string. */
   pageSize: string
+  /** Total number of records across all pages. */
   totalElements: number
+  /** Whether the current page is the first page. */
   isFirst: boolean
+  /** Whether the current page is the last page. */
   isLast: boolean
 }
 
 interface Emits {
+  /**
+   * Emitted when the user navigates to a different page.
+   *
+   * @param page - The zero-based page index.
+   */
   (e: 'update:page', page: number): void
+  /**
+   * Emitted when the user changes the page size.
+   *
+   * @param size - The new page size as a string.
+   */
   (e: 'update:page-size', size: string): void
 }
 
@@ -85,14 +105,25 @@ watch(() => props.currentPage, (newPage) => {
   pageInput.value = (newPage + 1).toString()
 })
 
+/**
+ * Emits a page-size update.
+ *
+ * @param value - The selected page size value.
+ */
 function handlePageSizeChange(value: unknown) {
   emit('update:page-size', String(value))
 }
 
+/**
+ * Emits a page navigation event.
+ *
+ * @param page - The zero-based page index to navigate to.
+ */
 function handlePageChange(page: number) {
   emit('update:page', page)
 }
 
+/** Validates the page input field and navigates if the value is a valid page number. */
 function handlePageInputChange() {
   const pageNumber = parseInt(pageInput.value)
 
@@ -106,11 +137,13 @@ function handlePageInputChange() {
   }
 }
 
+/** The one-based index of the first record on the current page. */
 const startRecord = computed(() => {
   if (props.totalElements === 0) return 0
   return props.currentPage * parseInt(props.pageSize) + 1
 })
 
+/** The one-based index of the last record on the current page. */
 const endRecord = computed(() => {
   if (props.totalElements === 0) return 0
   return Math.min((props.currentPage + 1) * parseInt(props.pageSize), props.totalElements)

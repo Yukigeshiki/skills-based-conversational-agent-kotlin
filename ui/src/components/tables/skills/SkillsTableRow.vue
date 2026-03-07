@@ -30,6 +30,7 @@
   </TableRow>
 </template>
 
+/** Table row for a skill summary with expandable chevron, tool badges, and formatted dates. */
 <script setup lang="ts">
 import { TableCell, TableRow } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
@@ -38,14 +39,19 @@ import { useSkillFormatters } from '@/composables/skills'
 import type { SkillSummary } from '@/types/skill'
 
 interface Props {
+  /** The skill summary data to display in the row. */
   skill: SkillSummary
+  /** Whether this row is currently expanded. */
   isExpanded: boolean
+  /** Whether the expanded content is loading. */
   isLoading: boolean
 }
 
 defineProps<Props>()
 defineEmits<{
+  /** Emitted when the row or chevron is clicked to toggle expansion. */
   toggle: [event: Event]
+  /** Emitted on mouse enter/leave with the skill ID or undefined. */
   hover: [id: string | undefined]
 }>()
 

@@ -14,6 +14,11 @@
   </div>
 </template>
 
+/**
+ * Scrollable message list that renders user and agent messages,
+ * shows a streaming indicator for in-progress responses, and
+ * displays an empty-state prompt when no messages exist.
+ */
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import type { ChatMessage } from '@/types/chat'
@@ -21,12 +26,19 @@ import ChatUserMessage from './ChatUserMessage.vue'
 import ChatAgentMessage from './ChatAgentMessage.vue'
 import ChatStreamingIndicator from './ChatStreamingIndicator.vue'
 
-const props = defineProps<{ messages: ChatMessage[] }>()
+const props = defineProps<{
+  /** The list of chat messages to render. */
+  messages: ChatMessage[]
+}>()
 
 const containerRef = ref<HTMLElement | null>(null)
 
 defineExpose({ containerRef })
 
+/**
+ * Returns the last message if it is currently streaming, otherwise null.
+ * Used to show the streaming indicator below the message list.
+ */
 const streamingMessage = computed(() => {
   const last = props.messages[props.messages.length - 1]
   return last?.status === 'streaming' ? last : null

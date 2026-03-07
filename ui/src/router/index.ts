@@ -1,3 +1,4 @@
+/** Application router with lazy-loaded views for chat and skills management. */
 import { createRouter, createWebHistory } from 'vue-router'
 
 const router = createRouter({

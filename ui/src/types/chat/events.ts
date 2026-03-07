@@ -1,3 +1,10 @@
+/**
+ * SSE event types emitted by the agent during a chat interaction.
+ *
+ * Each interface corresponds to a named SSE event and maps 1:1 with
+ * the backend AgentEvent sealed class subtypes.
+ */
+
 export interface PlanStep {
   stepNumber: number
   description: string

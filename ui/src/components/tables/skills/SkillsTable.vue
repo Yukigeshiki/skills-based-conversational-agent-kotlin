@@ -100,6 +100,10 @@
   </div>
 </template>
 
+/**
+ * Skills management table with card/table view toggle, client-side sorting
+ * and pagination, expandable row details, and CRUD dialogs.
+ */
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { TableHead } from '@/components/ui/table'
@@ -161,6 +165,10 @@ const {
   onDataChanged: fetchData,
 })
 
+/**
+ * Derives a paged, sorted response from the full skills list for the current
+ * page, page size, sort column, and sort direction.
+ */
 const pagedData = computed<PagedResponse<SkillSummary> | undefined>(() => {
   if (!skills.value.length && !loading.value) {
     return { content: [], empty: true, totalPages: 1, totalElements: 0, first: true, last: true }
@@ -197,6 +205,7 @@ const pagedData = computed<PagedResponse<SkillSummary> | undefined>(() => {
   }
 })
 
+/** Fetches all skills from the API and updates the local state. */
 async function fetchData() {
   loading.value = true
   error.value = undefined
@@ -209,10 +218,22 @@ async function fetchData() {
   }
 }
 
+/**
+ * Type assertion helper for a single item.
+ *
+ * @param item - The unknown item from the generic data view.
+ * @returns The item typed as {@link SkillSummary}.
+ */
 function asSkillSummary(item: unknown): SkillSummary {
   return item as SkillSummary
 }
 
+/**
+ * Type assertion helper for an array of items.
+ *
+ * @param items - The unknown items array from the generic data view.
+ * @returns The items typed as {@link SkillSummary}[].
+ */
 function asSkillSummaries(items: unknown[]): SkillSummary[] {
   return items as SkillSummary[]
 }

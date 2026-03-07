@@ -57,6 +57,10 @@
   </div>
 </template>
 
+/**
+ * Renders a single activity event (skill match, thought, tool call, plan step, etc.)
+ * with an appropriate icon and formatted content.
+ */
 <script setup lang="ts">
 import { computed } from 'vue'
 import {
@@ -72,6 +76,7 @@ import type { ChatEvent } from '@/types/chat'
 
 const props = defineProps<{ event: ChatEvent }>()
 
+/** Maps event types to their corresponding Lucide icon components. */
 const iconMap = {
   skill_matched: Zap,
   plan_created: List,
@@ -83,8 +88,15 @@ const iconMap = {
   tool_call_completed: Wrench,
 } as const
 
+/** Resolves the icon component for the current event type, falling back to {@link Circle}. */
 const icon = computed(() => iconMap[props.event.type as keyof typeof iconMap] ?? Circle)
 
+/**
+ * Pretty-prints a JSON arguments string, returning the raw string on parse failure.
+ *
+ * @param args - The raw JSON arguments string.
+ * @returns A formatted JSON string or the original value.
+ */
 function formatArgs(args: string): string {
   try {
     return JSON.stringify(JSON.parse(args), null, 2)

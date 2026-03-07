@@ -14,6 +14,10 @@
   </div>
 </template>
 
+/**
+ * Collapsible activity log that shows the number of steps and expands to reveal
+ * individual {@link ChatActivityItem} entries. Auto-expands while streaming.
+ */
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import { ChevronDown, ChevronRight } from 'lucide-vue-next'
@@ -21,10 +25,16 @@ import type { ChatEvent } from '@/types/chat'
 import ChatActivityItem from './ChatActivityItem.vue'
 
 const props = defineProps<{
+  /** The list of activity events to display. */
   activities: ChatEvent[]
+  /** Whether the parent message is currently streaming. */
   streaming: boolean
 }>()
 
+/**
+ * Filters out trailing `iteration_started` events that have no meaningful
+ * follow-up (thought or tool call), keeping the log concise.
+ */
 const displayActivities = computed(() => {
   const activities = props.activities
   return activities.filter((event, index) => {

@@ -15,6 +15,7 @@
   </div>
 </template>
 
+/** Renders an assistant message with its activity log, error state, and sanitised markdown content. */
 <script setup lang="ts">
 import { computed } from 'vue'
 import { marked } from 'marked'
@@ -23,12 +24,17 @@ import type { ChatMessage } from '@/types/chat'
 import ChatActivityLog from './ChatActivityLog.vue'
 import ChatErrorMessage from './ChatErrorMessage.vue'
 
-const props = defineProps<{ message: ChatMessage }>()
+const props = defineProps<{
+  /** The assistant chat message to render. */
+  message: ChatMessage
+}>()
 
+/** Activities to display, excluding terminal event types (final_response, error). */
 const displayActivities = computed(() =>
   props.message.activities.filter((a) => a.type !== 'final_response' && a.type !== 'error'),
 )
 
+/** The message content parsed as markdown and sanitised with DOMPurify. */
 const renderedContent = computed(() =>
   DOMPurify.sanitize(marked.parse(props.message.content) as string),
 )

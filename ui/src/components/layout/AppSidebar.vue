@@ -44,6 +44,7 @@
   </aside>
 </template>
 
+/** Collapsible sidebar with logo, toggle button, and navigation links. */
 <script setup lang="ts">
 import { type Component } from 'vue'
 import { useSidebar } from '@/composables/ui'
@@ -55,14 +56,19 @@ import {
   Wrench,
 } from 'lucide-vue-next'
 
+/** A single navigation item rendered in the sidebar. */
 interface NavItem {
+  /** The route path to navigate to. */
   path: string
+  /** Display label shown when the sidebar is expanded. */
   label: string
+  /** Lucide icon component rendered alongside the label. */
   icon: Component
 }
 
 const { isExpanded, toggle } = useSidebar()
 
+/** The static list of navigation items displayed in the sidebar. */
 const navItems: NavItem[] = [
   {
     path: '/chat',
@@ -76,6 +82,7 @@ const navItems: NavItem[] = [
   },
 ]
 
+/** Toggles the sidebar between expanded and collapsed states. */
 function toggleSidebar() {
   toggle()
 }

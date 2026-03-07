@@ -6,10 +6,12 @@
   </TableRow>
 </template>
 
+/** Full-width table row used to render expanded content beneath a data row. */
 <script setup lang="ts">
 import { TableCell, TableRow } from '@/components/ui/table'
 
 interface Props {
+  /** Number of columns to span across the table. */
   colspan: number
 }
 

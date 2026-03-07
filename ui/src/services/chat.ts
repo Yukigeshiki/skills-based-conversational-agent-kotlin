@@ -1,15 +1,33 @@
+/**
+ * Chat service for streaming agent interactions via SSE and fetching conversation history.
+ *
+ * Uses the fetch API for SSE streaming (to support POST with a request body)
+ * and Axios for the REST history endpoint.
+ */
 import type { ChatEvent, ConversationHistoryMessage } from '@/types/chat'
 import { apiClient } from './api'
 
 const API_URL = import.meta.env.AGENT_SERVICE_URL || 'http://localhost:9090'
 
+/** Callbacks invoked during an SSE chat stream. */
 export interface ChatStreamCallbacks {
+  /** Called for each parsed agent event received from the stream. */
   onEvent: (event: ChatEvent) => void
+  /** Called when the stream encounters an error or the server returns a non-OK status. */
   onError: (error: string) => void
+  /** Called when the stream ends successfully. */
   onComplete: () => void
 }
 
 class ChatService {
+  /**
+   * Sends a chat message and streams the response via SSE.
+   *
+   * @param message - The user's message text.
+   * @param callbacks - Handlers for stream events, errors, and completion.
+   * @param conversationId - Optional existing conversation ID to continue.
+   * @returns An AbortController that can be used to cancel the stream.
+   */
   sendMessage(
     message: string,
     callbacks: ChatStreamCallbacks,
@@ -24,6 +42,12 @@ class ChatService {
     return controller
   }
 
+  /**
+   * Fetches the full conversation history for a given conversation ID.
+   *
+   * @param conversationId - The UUID of the conversation to retrieve.
+   * @returns The ordered list of messages in the conversation.
+   */
   async getHistory(conversationId: string): Promise<ConversationHistoryMessage[]> {
     const response = await apiClient.get<ConversationHistoryMessage[]>(
       `/api/chat/${conversationId}/history`,
@@ -31,6 +55,15 @@ class ChatService {
     return response.data
   }
 
+  /**
+   * Performs the actual fetch-based SSE streaming, reading chunks from the
+   * response body and splitting them into SSE blocks for parsing.
+   *
+   * @param message - The user's message text.
+   * @param callbacks - Handlers for stream events, errors, and completion.
+   * @param signal - AbortSignal to cancel the request.
+   * @param conversationId - Optional conversation ID to continue.
+   */
   private async streamResponse(
     message: string,
     callbacks: ChatStreamCallbacks,
@@ -100,6 +133,12 @@ class ChatService {
     }
   }
 
+  /**
+   * Extracts the `data:` line from an SSE block and parses it as a ChatEvent.
+   *
+   * @param block - A single SSE block (text between double newlines).
+   * @param callbacks - Handlers to invoke with the parsed event.
+   */
   private processBlock(block: string, callbacks: ChatStreamCallbacks): void {
     let data = ''
 

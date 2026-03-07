@@ -27,23 +27,35 @@
   </div>
 </template>
 
+/** Displays active filter chips with individual remove buttons and a "Clear filters" action. */
 <script setup lang="ts">
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { X } from 'lucide-vue-next'
 
+/** Represents a single active filter displayed as a removable chip. */
 export interface ActiveFilter {
+  /** The filter parameter key. */
   key: string
+  /** Human-readable label for the chip. */
   label: string
+  /** Display value for the chip. */
   value: string
 }
 
 interface Props {
+  /** The list of active filters to render as chips. */
   filters: ActiveFilter[]
 }
 
 interface Emits {
+  /**
+   * Emitted when a single filter chip is removed.
+   *
+   * @param key - The key of the filter to remove.
+   */
   (e: 'remove', key: string): void
+  /** Emitted when the "Clear filters" button is clicked. */
   (e: 'clear-all'): void
 }
 

@@ -1,7 +1,9 @@
+/** Composable for skill create, update, and delete operations with error and loading state. */
 import type { Ref } from 'vue'
 import { skillService } from '@/services'
 import type { Skill, CreateSkillRequest, UpdateSkillRequest } from '@/types/skill'
 
+/** Reactive refs for dialog state, error messages, and submission flags needed by CRUD handlers. */
 export interface UseSkillCrudOptions {
   editingSkillId: Ref<string | undefined>
   deletingSkillId: Ref<string | undefined>
@@ -18,7 +20,18 @@ export interface UseSkillCrudOptions {
   onDataChanged: () => void
 }
 
+/**
+ * Provides async handlers for skill CRUD operations.
+ *
+ * @param options - Reactive refs for dialog state and a callback to refresh data after mutations.
+ * @returns An object containing {@link handleCreate}, {@link handleEdit}, and {@link handleDelete}.
+ */
 export function useSkillCrud(options: UseSkillCrudOptions) {
+  /**
+   * Creates a new skill, closes the dialog on success, and triggers a data refresh.
+   *
+   * @param data - The skill creation payload.
+   */
   async function handleCreate(data: CreateSkillRequest) {
     options.createSubmitting.value = true
     options.createError.value = undefined
@@ -34,6 +47,11 @@ export function useSkillCrud(options: UseSkillCrudOptions) {
     }
   }
 
+  /**
+   * Updates the currently selected skill, invalidates its expanded row cache, and refreshes data.
+   *
+   * @param data - The fields to update on the skill.
+   */
   async function handleEdit(data: UpdateSkillRequest) {
     const skillId = options.editingSkillId.value
     if (!skillId) {
@@ -61,6 +79,7 @@ export function useSkillCrud(options: UseSkillCrudOptions) {
     }
   }
 
+  /** Deletes the currently selected skill, removes it from expanded rows, and refreshes data. */
   async function handleDelete() {
     const skillId = options.deletingSkillId.value
     if (!skillId) {

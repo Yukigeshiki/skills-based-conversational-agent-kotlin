@@ -1,3 +1,4 @@
+/** Shared Axios client and SSE helper for communicating with the agent backend. */
 import axios from 'axios'
 
 const API_TIMEOUT = 30000
@@ -12,6 +13,13 @@ export const apiClient = axios.create({
   },
 })
 
+/**
+ * Opens a native EventSource connection to the given backend path.
+ *
+ * @param path - API path to connect to (appended to the base URL).
+ * @param options - Optional callbacks for open, message, and error events.
+ * @returns The EventSource instance for the caller to close when done.
+ */
 export function createSSEConnection(path: string, options?: { onMessage?: (data: string) => void; onError?: (err: Event) => void; onOpen?: () => void }) {
   const url = `${API_URL}${path}`
   const eventSource = new EventSource(url)

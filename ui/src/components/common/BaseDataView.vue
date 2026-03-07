@@ -135,6 +135,11 @@
   </div>
 </template>
 
+/**
+ * Generic data view component that supports table and card layouts with
+ * view-mode toggle, sorting, pagination, active filter chips, and
+ * loading/error/empty states.
+ */
 <script setup lang="ts" generic="TData extends { content?: unknown[]; empty?: boolean; totalPages?: number; totalElements?: number; first?: boolean; last?: boolean }">
 import { computed, onMounted, useSlots } from 'vue'
 import { Table, TableBody, TableCell, TableHeader, TableRow } from '@/components/ui/table'
@@ -145,29 +150,76 @@ import type { ActiveFilter } from '@/composables/tables'
 import { useViewMode, type ViewMode } from '@/composables/tables'
 
 interface Props {
+  /** Whether data is currently loading. */
   loading: boolean
+  /** Error message to display. */
   error?: string
+  /** The paged data response. */
   data?: TData
+  /** Active filters displayed as removable chips. */
   activeFilters: ActiveFilter[]
+  /** Zero-based current page index. */
   currentPage: number
+  /** Current page size as a string. */
   pageSize: string
+  /** The column key currently sorted by. */
   sortColumn: string
+  /** The current sort direction. */
   sortDirection: 'asc' | 'desc'
+  /** Number of columns in the table (used for colspan in empty/loading states). */
   columnCount: number
+  /** Unique table identifier used for persisting view mode. */
   tableId: string
+  /** Message shown while loading. */
   loadingMessage?: string
+  /** Message shown when the data set is empty. */
   emptyMessage?: string
+  /** Additional CSS classes for the table container. */
   tableClass?: string
+  /**
+   * Returns a unique ID for a data item (required for card view).
+   *
+   * @param item - The data item.
+   * @returns The unique identifier string.
+   */
   getItemId?: (item: unknown) => string
+  /**
+   * Returns whether a given item ID is expanded (required for card view).
+   *
+   * @param id - The item ID to check.
+   * @returns True if the item is expanded.
+   */
   isItemExpanded?: (id: string) => boolean
+  /** Default view mode when no preference is stored. */
   defaultViewMode?: ViewMode
 }
 
 interface Emits {
+  /**
+   * Emitted when a filter chip is removed.
+   *
+   * @param key - The filter key to remove.
+   */
   (e: 'remove-filter', key: string): void
+  /** Emitted when the "Clear filters" button is clicked. */
   (e: 'clear-all-filters'): void
+  /**
+   * Emitted when navigating to a different page.
+   *
+   * @param page - The zero-based page index.
+   */
   (e: 'update:page', page: number): void
+  /**
+   * Emitted when the page size changes.
+   *
+   * @param size - The new page size as a string.
+   */
   (e: 'update:page-size', size: string): void
+  /**
+   * Emitted when a column header is clicked for sorting.
+   *
+   * @param column - The column key to sort by.
+   */
   (e: 'sort', column: string): void
 }
 
@@ -183,9 +235,12 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<Emits>()
 
 const slots = useSlots()
+/** Whether a `#card` slot has been provided, enabling card view mode. */
 const hasCardSlot = computed(() => !!slots.card)
 
+/** Resolved `getItemId` function, defaulting to a no-op if not provided. */
 const getItemId = computed(() => props.getItemId ?? (() => ''))
+/** Resolved `isItemExpanded` function, defaulting to always-false if not provided. */
 const isItemExpanded = computed(() => props.isItemExpanded ?? (() => false))
 
 if (import.meta.env.DEV) {
@@ -204,17 +259,26 @@ const { isCardView, isTableView, setViewMode } = useViewMode({
   defaultMode: props.defaultViewMode,
 })
 
+/** True when card view is active and a card slot is provided. */
 const effectiveIsCardView = computed(() => hasCardSlot.value && isCardView.value)
+/** True when table view is active or no card slot is provided. */
 const effectiveIsTableView = computed(() => !hasCardSlot.value || isTableView.value)
 
+/** Switches to card view mode. */
 function setCardView() {
   setViewMode('card')
 }
 
+/** Switches to table view mode. */
 function setTableView() {
   setViewMode('table')
 }
 
+/**
+ * Forwards a sort event for the given column.
+ *
+ * @param column - The column key to sort by.
+ */
 function handleSort(column: string) {
   emit('sort', column)
 }

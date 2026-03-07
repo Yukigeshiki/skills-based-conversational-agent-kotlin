@@ -19,12 +19,15 @@
   </Card>
 </template>
 
+/** Clickable card wrapper with keyboard support, expansion state styling, and a loading indicator. */
 <script setup lang="ts">
 import { Loader2 } from 'lucide-vue-next'
 import { Card, CardContent } from '@/components/ui/card'
 
 interface Props {
+  /** Whether the card is currently expanded. */
   isExpanded?: boolean
+  /** Whether the card's expanded content is loading. */
   isLoading?: boolean
 }
 
@@ -34,6 +37,7 @@ withDefaults(defineProps<Props>(), {
 })
 
 defineEmits<{
+  /** Emitted when the card is clicked or activated via keyboard. */
   toggle: [event: MouseEvent | KeyboardEvent | Event]
 }>()
 </script>

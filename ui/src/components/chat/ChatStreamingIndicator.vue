@@ -5,13 +5,21 @@
   </div>
 </template>
 
+/** Animated spinner with a context-aware label derived from the latest activity event. */
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Loader2 } from 'lucide-vue-next'
 import type { ChatEvent } from '@/types/chat'
 
-const props = defineProps<{ activities: ChatEvent[] }>()
+const props = defineProps<{
+  /** The current list of streaming activity events. */
+  activities: ChatEvent[]
+}>()
 
+/**
+ * Derives a human-readable status label from the most recent activity event.
+ * Falls back to "Thinking..." when no activities exist.
+ */
 const label = computed(() => {
   if (props.activities.length === 0) return 'Thinking...'
   const last = props.activities[props.activities.length - 1]!

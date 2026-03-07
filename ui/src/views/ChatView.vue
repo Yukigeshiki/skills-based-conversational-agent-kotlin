@@ -20,6 +20,10 @@
   </AppLayout>
 </template>
 
+/**
+ * Chat view page — composes message list, input bar, streaming, and conversation
+ * management into the main chat experience with history persistence.
+ */
 <script setup lang="ts">
 import { ref, watch, onMounted } from 'vue'
 import { AppLayout } from '@/layouts'
@@ -68,6 +72,7 @@ onMounted(async () => {
   }
 })
 
+/** Starts a new conversation and clears all displayed messages. */
 function handleNewChat(): void {
   startNewConversation()
   setMessages([])

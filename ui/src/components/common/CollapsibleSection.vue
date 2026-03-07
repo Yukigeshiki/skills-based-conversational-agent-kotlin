@@ -37,15 +37,24 @@
   </div>
 </template>
 
+/**
+ * Collapsible section with a title, optional edit button (shown on hover),
+ * and expand/collapse toggle. Syncs with the `defaultExpanded` prop.
+ */
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import { ChevronDown, ChevronRight, Pencil } from 'lucide-vue-next'
 
 interface Props {
+  /** The section heading text. */
   title: string
+  /** Whether to show the edit button on hover. */
   showEdit?: boolean
+  /** Forces the edit button to always be visible. */
   forceShowEdit?: boolean
+  /** Whether the section starts expanded. */
   defaultExpanded?: boolean
+  /** Additional CSS classes for the title element. */
   titleClass?: string
 }
 
@@ -57,6 +66,7 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 defineEmits<{
+  /** Emitted when the edit button is clicked. */
   edit: []
 }>()
 

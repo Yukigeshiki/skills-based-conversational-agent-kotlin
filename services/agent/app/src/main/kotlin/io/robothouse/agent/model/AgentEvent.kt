@@ -31,6 +31,10 @@ sealed class AgentEvent {
     abstract val type: String
     abstract val timestamp: Instant
 
+    /**
+     * Emitted at the start of a chat request with the resolved conversation ID,
+     * allowing the client to track the conversation across requests.
+     */
     data class ConversationStartedEvent(
         val conversationId: String,
         override val timestamp: Instant = Instant.now()

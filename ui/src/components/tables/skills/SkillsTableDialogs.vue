@@ -135,6 +135,10 @@
   </Dialog>
 </template>
 
+/**
+ * Skill CRUD dialogs (create, edit, delete) with form state management.
+ * Fetches existing skill data when the edit dialog opens and resets forms on close.
+ */
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue'
 import { Button } from '@/components/ui/button'
@@ -154,12 +158,19 @@ import { skillService } from '@/services'
 import type { CreateSkillRequest, UpdateSkillRequest } from '@/types/skill'
 
 interface Props {
+  /** Error message from the create operation, if any. */
   createError?: string
+  /** Whether a create request is in flight. */
   createSubmitting: boolean
+  /** Error message from the edit operation, if any. */
   editError?: string
+  /** Whether an edit request is in flight. */
   editSubmitting: boolean
+  /** The ID of the skill being edited. */
   editingSkillId?: string
+  /** Error message from the delete operation, if any. */
   deleteError?: string
+  /** Whether a delete request is in flight. */
   deleteSubmitting: boolean
 }
 
@@ -222,10 +233,17 @@ watch(editDialogOpen, async (open) => {
   }
 })
 
+/**
+ * Parses a comma-separated string of tool names into a trimmed array.
+ *
+ * @param input - The raw comma-separated input.
+ * @returns An array of non-empty tool name strings.
+ */
 function parseToolNames(input: string): string[] {
   return input.split(',').map(t => t.trim()).filter(t => t.length > 0)
 }
 
+/** Builds a {@link CreateSkillRequest} from the form state and emits a `create` event. */
 function handleCreateSubmit() {
   const data: CreateSkillRequest = {
     name: createForm.name,
@@ -239,6 +257,7 @@ function handleCreateSubmit() {
   emit('create', data)
 }
 
+/** Builds an {@link UpdateSkillRequest} from the form state and emits an `edit` event. */
 function handleEditSubmit() {
   const data: UpdateSkillRequest = {
     name: editForm.name,

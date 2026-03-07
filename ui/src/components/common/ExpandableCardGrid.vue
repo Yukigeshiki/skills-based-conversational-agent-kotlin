@@ -55,6 +55,11 @@
   </div>
 </template>
 
+/**
+ * Responsive card grid with animated expand/collapse panels.
+ * Renders loading skeletons, error/empty states, and data cards with
+ * per-row expansion panels that auto-position beneath the expanded card.
+ */
 <script setup lang="ts">
 import { computed, provide } from 'vue'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -68,13 +73,31 @@ defineOptions({
 provide(EXPANDED_CONTENT_EMBEDDED_KEY, true)
 
 interface Props {
+  /** The data items to render as cards. */
   items: unknown[]
+  /**
+   * Returns a unique ID for a given item.
+   *
+   * @param item - The data item.
+   * @returns The unique identifier string.
+   */
   getItemId: (item: unknown) => string
+  /**
+   * Returns whether a given item ID is currently expanded.
+   *
+   * @param id - The item ID to check.
+   * @returns True if the item is expanded.
+   */
   isExpanded: (id: string) => boolean
+  /** Whether data is currently loading. */
   loading: boolean
+  /** Error message to display, if any. */
   error?: string
+  /** Whether the data set is empty. */
   isEmpty: boolean
+  /** Message shown when the data set is empty. */
   emptyMessage?: string
+  /** Number of skeleton placeholders to show while loading. */
   skeletonCount?: number
 }
 
@@ -86,14 +109,17 @@ const props = withDefaults(defineProps<Props>(), {
 
 const { width } = useWindowSize()
 
+/** Number of grid columns based on the current viewport width. */
 const columnCount = computed(() => {
   if (width.value >= 1280) return 4
   if (width.value >= 768) return 2
   return 1
 })
 
+/** Number of columns the expansion panel should span (max 2). */
 const panelSpan = computed(() => Math.min(2, columnCount.value))
 
+/** Splits items into rows of `columnCount` items for grid rendering. */
 const cardRows = computed(() => {
   const rows: unknown[][] = []
   const items = props.items
@@ -103,10 +129,22 @@ const cardRows = computed(() => {
   return rows
 })
 
+/**
+ * Finds the expanded item within a row, if any.
+ *
+ * @param row - The row of items to search.
+ * @returns The expanded item, or undefined if none is expanded.
+ */
 function expandedItemInRow(row: unknown[]): unknown | undefined {
   return row.find(item => props.isExpanded(props.getItemId(item)))
 }
 
+/**
+ * Computes inline styles to position the expansion panel centred beneath the expanded card.
+ *
+ * @param row - The row containing the expanded item.
+ * @returns CSS properties for width and margin-left positioning.
+ */
 function expansionPanelStyle(row: unknown[]): Record<string, string> {
   const expandedItem = expandedItemInRow(row)
   if (!expandedItem) return {}
@@ -137,6 +175,11 @@ const TRANSITION_DURATION = 250
 const prefersReducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
 const TRANSITION_CSS = `max-height ${TRANSITION_DURATION}ms ease, opacity ${TRANSITION_DURATION}ms ease, transform ${TRANSITION_DURATION}ms ease`
 
+/**
+ * Transition hook: sets initial collapsed state before the enter animation.
+ *
+ * @param el - The DOM element being transitioned.
+ */
 function onBeforeEnter(el: Element) {
   const htmlEl = el as HTMLElement
   htmlEl.style.overflow = 'hidden'
@@ -145,6 +188,12 @@ function onBeforeEnter(el: Element) {
   htmlEl.style.transform = 'translateY(-1rem)'
 }
 
+/**
+ * Transition hook: animates the element from collapsed to expanded state.
+ *
+ * @param el - The DOM element being transitioned.
+ * @param done - Callback to signal animation completion.
+ */
 function onEnter(el: Element, done: () => void) {
   const htmlEl = el as HTMLElement
 
@@ -166,6 +215,11 @@ function onEnter(el: Element, done: () => void) {
   })
 }
 
+/**
+ * Transition hook: cleans up inline styles after the enter animation completes.
+ *
+ * @param el - The DOM element that was transitioned.
+ */
 function onAfterEnter(el: Element) {
   const htmlEl = el as HTMLElement
   htmlEl.style.overflow = ''
@@ -175,6 +229,12 @@ function onAfterEnter(el: Element) {
   htmlEl.style.transition = ''
 }
 
+/**
+ * Transition hook: animates the element from expanded to collapsed state.
+ *
+ * @param el - The DOM element being transitioned.
+ * @param done - Callback to signal animation completion.
+ */
 function onLeave(el: Element, done: () => void) {
   const htmlEl = el as HTMLElement
 

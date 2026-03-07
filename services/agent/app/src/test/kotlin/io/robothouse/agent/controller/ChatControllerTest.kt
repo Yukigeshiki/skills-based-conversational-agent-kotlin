@@ -108,7 +108,7 @@ class ChatControllerTest {
         val emitter = SseEmitter()
         whenever(streamingChatService.streamChat(any(), anyOrNull())).thenAnswer {
             Thread.startVirtualThread {
-                emitter.send(SseEmitter.event().name("conversation_started").data("""{"type":"conversation_started","conversationId":"abc-123"}"""))
+                emitter.send(SseEmitter.event().name("conversation_started").data("""{"type":"conversation_started","conversationId":"a1b2c3d4-e5f6-7890-abcd-ef1234567890"}"""))
                 emitter.complete()
             }
             emitter
@@ -117,7 +117,7 @@ class ChatControllerTest {
         val mvcResult: MvcResult = mockMvc.perform(
             post("/api/chat")
                 .contentType(MediaType.APPLICATION_JSON)
-                .content("""{"message": "Hi", "conversationId": "abc-123"}""")
+                .content("""{"message": "Hi", "conversationId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"}""")
         )
             .andExpect(request().asyncStarted())
             .andReturn()

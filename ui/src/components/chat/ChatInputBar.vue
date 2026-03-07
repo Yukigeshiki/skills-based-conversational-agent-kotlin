@@ -29,17 +29,22 @@
   </div>
 </template>
 
+/** Chat input bar with auto-resizing textarea, send/stop buttons, and Enter-to-submit support. */
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue'
 import { SendHorizontal, Square } from 'lucide-vue-next'
 
 defineProps<{
+  /** Whether the assistant is currently streaming a response. */
   isStreaming: boolean
+  /** Whether the input should be disabled. */
   disabled?: boolean
 }>()
 
 const emit = defineEmits<{
+  /** Emitted when the user submits a message. */
   submit: []
+  /** Emitted when the user clicks the stop button during streaming. */
   stop: []
 }>()
 
@@ -50,6 +55,7 @@ watch(inputText, () => {
   nextTick(() => autoResize())
 })
 
+/** Resets the textarea height to fit its content. */
 function autoResize(): void {
   const el = textareaRef.value
   if (!el) return
@@ -57,6 +63,11 @@ function autoResize(): void {
   el.style.height = `${el.scrollHeight}px`
 }
 
+/**
+ * Handles keydown events, submitting on Enter (without Shift).
+ *
+ * @param event - The keyboard event.
+ */
 function handleKeydown(event: KeyboardEvent): void {
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault()
@@ -64,6 +75,7 @@ function handleKeydown(event: KeyboardEvent): void {
   }
 }
 
+/** Submits the current input text if non-empty. */
 function submit(): void {
   if (!inputText.value?.trim()) return
   emit('submit')

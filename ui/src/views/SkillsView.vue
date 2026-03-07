@@ -6,6 +6,7 @@
   </AppLayout>
 </template>
 
+/** Skills management page — renders the skills table within the app layout. */
 <script setup lang="ts">
 import { AppLayout } from '@/layouts'
 import { SkillsTable } from '@/components/tables/skills'

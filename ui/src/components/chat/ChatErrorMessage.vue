@@ -5,8 +5,12 @@
   </div>
 </template>
 
+/** Displays an inline error banner with an alert icon and message text. */
 <script setup lang="ts">
 import { AlertCircle } from 'lucide-vue-next'
 
-defineProps<{ error: string }>()
+defineProps<{
+  /** The error message to display. */
+  error: string
+}>()
 </script>

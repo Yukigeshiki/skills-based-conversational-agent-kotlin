@@ -1,3 +1,4 @@
+/** Composable for managing open/close state, errors, and submission flags for skill CRUD dialogs. */
 import { ref } from 'vue'
 import type { CreateSkillRequest, UpdateSkillRequest } from '@/types/skill'
 
@@ -22,12 +23,18 @@ export function useSkillDialogState() {
   const deleteError = ref<string | undefined>(undefined)
   const deleteSubmitting = ref(false)
 
+  /** Opens the create dialog and resets its error and pending data state. */
   function openCreate() {
     createDialogOpen.value = true
     createError.value = undefined
     pendingCreateData.value = undefined
   }
 
+  /**
+   * Opens the edit dialog for the given skill ID and resets its error state.
+   *
+   * @param skillId - The ID of the skill to edit.
+   */
   function openEdit(skillId: string) {
     editingSkillId.value = skillId
     editDialogOpen.value = true
@@ -35,6 +42,11 @@ export function useSkillDialogState() {
     pendingEditData.value = undefined
   }
 
+  /**
+   * Opens the delete confirmation dialog for the given skill ID.
+   *
+   * @param skillId - The ID of the skill to delete.
+   */
   function openDelete(skillId: string) {
     deletingSkillId.value = skillId
     deleteDialogOpen.value = true

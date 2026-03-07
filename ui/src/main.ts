@@ -1,3 +1,4 @@
+/** Application entry point — creates the Vue app, installs plugins, and mounts to the DOM. */
 import { createApp } from 'vue'
 import '@/assets/index.css'
 import App from './App.vue'

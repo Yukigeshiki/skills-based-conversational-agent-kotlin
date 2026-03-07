@@ -12,15 +12,19 @@
   </button>
 </template>
 
+/** Chevron toggle button for table row expansion, showing a spinner while loading. */
 <script setup lang="ts">
 import { ChevronRight, Loader2 } from 'lucide-vue-next'
 
 defineProps<{
+  /** Whether the row is currently expanded. */
   isExpanded: boolean
+  /** Whether the expanded content is loading. */
   isLoading: boolean
 }>()
 
 defineEmits<{
+  /** Emitted when the toggle control is clicked. */
   toggle: [event: Event]
 }>()
 </script>

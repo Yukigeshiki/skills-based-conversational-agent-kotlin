@@ -13,6 +13,7 @@
   </div>
 </template>
 
+/** Root layout wrapping page content with the collapsible sidebar and responsive main area. */
 <script setup lang="ts">
 import { AppSidebar } from '@/components/layout'
 import { useSidebar } from '@/composables/ui'

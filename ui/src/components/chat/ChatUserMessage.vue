@@ -6,8 +6,12 @@
   </div>
 </template>
 
+/** Renders a user-sent message in a right-aligned primary-coloured bubble. */
 <script setup lang="ts">
 import type { ChatMessage } from '@/types/chat'
 
-defineProps<{ message: ChatMessage }>()
+defineProps<{
+  /** The user chat message to render. */
+  message: ChatMessage
+}>()
 </script>

@@ -1,9 +1,18 @@
+/** Composable for managing table filter state, dialog-driven filter application, and data fetching. */
 import { ref } from 'vue'
 
+/** Configuration for {@link useTableFilters}. */
 export interface UseTableFiltersOptions {
+  /** When true (default), empty string values are stripped before applying filters. */
   cleanFilters?: boolean
 }
 
+/**
+ * Manages filter state, pending dialog filters, loading/error state, and data fetching.
+ *
+ * @param options - Optional configuration for filter cleaning behaviour.
+ * @returns Reactive filter state, dialog controls, and an {@link executeFetch} method.
+ */
 export function useTableFilters<TParams = Record<string, unknown>, TResponse = unknown>(
   options?: UseTableFiltersOptions
 ) {
@@ -16,6 +25,12 @@ export function useTableFilters<TParams = Record<string, unknown>, TResponse = u
   const error = ref<string | undefined>(undefined)
   const data = ref<TResponse | undefined>(undefined)
 
+  /**
+   * Strips empty or whitespace-only string values from the filter object.
+   *
+   * @param filters - The raw filter object to clean.
+   * @returns A new object with empty string values removed.
+   */
   function cleanEmptyFilters(filters: TParams): TParams {
     const cleaned = {} as Partial<TParams>
     Object.entries(filters as Record<string, unknown>).forEach(([key, value]) => {
@@ -28,6 +43,11 @@ export function useTableFilters<TParams = Record<string, unknown>, TResponse = u
     return cleaned as TParams
   }
 
+  /**
+   * Stages new filters from a dialog submission for the next fetch.
+   *
+   * @param newFilters - The filter values submitted from the dialog.
+   */
   function handleFiltersUpdate(newFilters: TParams) {
     const filtersToUse = options?.cleanFilters !== false
       ? cleanEmptyFilters(newFilters)
@@ -37,10 +57,17 @@ export function useTableFilters<TParams = Record<string, unknown>, TResponse = u
     pendingFilters.value = filtersToUse as TParams
   }
 
+  /** Clears the current filter error message. */
   function clearFilterError() {
     filterError.value = undefined
   }
 
+  /**
+   * Executes a data fetch using either pending dialog filters or the current active filters.
+   * On success from a dialog submission, commits the pending filters and closes the dialog.
+   *
+   * @param fetchFn - Async function that fetches data given the filter parameters.
+   */
   async function executeFetch(
     fetchFn: (params: TParams) => Promise<TResponse>
   ): Promise<void> {

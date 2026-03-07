@@ -79,6 +79,10 @@
   </BaseExpandedContent>
 </template>
 
+/**
+ * Expanded content panel for a skill, showing details, system prompt,
+ * planning prompt, tools, metadata, and a danger zone with a delete button.
+ */
 <script setup lang="ts">
 import { Badge } from '@/components/ui/badge'
 import { BaseExpandedContent, CollapsibleSection, DestructiveButton } from '@/components/common'
@@ -86,13 +90,25 @@ import { useSkillFormatters } from '@/composables/skills'
 import type { Skill } from '@/types/skill'
 
 interface Props {
+  /** The full skill data to display, or undefined while loading. */
   skill: Skill | undefined
+  /** Whether the skill data is currently loading. */
   isLoading: boolean
 }
 
 defineProps<Props>()
 defineEmits<{
+  /**
+   * Emitted when the edit button is clicked.
+   *
+   * @param skillId - The ID of the skill to edit.
+   */
   edit: [skillId: string]
+  /**
+   * Emitted when the delete button is clicked.
+   *
+   * @param skillId - The ID of the skill to delete.
+   */
   delete: [skillId: string]
 }>()
 
