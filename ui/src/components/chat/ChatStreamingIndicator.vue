@@ -14,7 +14,7 @@ const props = defineProps<{ activities: ChatEvent[] }>()
 
 const label = computed(() => {
   if (props.activities.length === 0) return 'Thinking...'
-  const last = props.activities[props.activities.length - 1]
+  const last = props.activities[props.activities.length - 1]!
   switch (last.type) {
     case 'skill_matched':
       return `Using ${last.skillName}...`

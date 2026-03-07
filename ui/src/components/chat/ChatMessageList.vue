@@ -9,7 +9,7 @@
       :activities="streamingMessage.activities"
     />
     <div v-if="messages.length === 0" class="flex h-full items-center justify-center">
-      <p class="text-muted-foreground">Send a message to start chatting.</p>
+      <p class="text-muted-foreground">Send a message to start a new conversation.</p>
     </div>
   </div>
 </template>

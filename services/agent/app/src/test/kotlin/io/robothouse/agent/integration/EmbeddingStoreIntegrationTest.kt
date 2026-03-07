@@ -20,7 +20,7 @@ import java.util.UUID
 @SpringBootTest
 @Testcontainers
 @ActiveProfiles("integration")
-@Import(PostgresContainerConfig::class)
+@Import(PostgresContainerConfig::class, RedisContainerConfig::class)
 class EmbeddingStoreIntegrationTest {
 
     @Autowired

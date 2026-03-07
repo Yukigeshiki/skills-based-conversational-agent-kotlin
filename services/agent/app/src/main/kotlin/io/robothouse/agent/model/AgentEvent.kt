@@ -14,6 +14,7 @@ import java.time.Instant
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.EXISTING_PROPERTY, property = "type")
 @JsonSubTypes(
+    JsonSubTypes.Type(value = AgentEvent.ConversationStartedEvent::class, name = "conversation_started"),
     JsonSubTypes.Type(value = AgentEvent.SkillMatchedEvent::class, name = "skill_matched"),
     JsonSubTypes.Type(value = AgentEvent.PlanCreatedEvent::class, name = "plan_created"),
     JsonSubTypes.Type(value = AgentEvent.PlanStepStartedEvent::class, name = "plan_step_started"),
@@ -23,11 +24,19 @@ import java.time.Instant
     JsonSubTypes.Type(value = AgentEvent.ToolCallStartedEvent::class, name = "tool_call_started"),
     JsonSubTypes.Type(value = AgentEvent.ToolCallCompletedEvent::class, name = "tool_call_completed"),
     JsonSubTypes.Type(value = AgentEvent.FinalResponseEvent::class, name = "final_response"),
+    JsonSubTypes.Type(value = AgentEvent.WarningEvent::class, name = "warning"),
     JsonSubTypes.Type(value = AgentEvent.ErrorEvent::class, name = "error")
 )
 sealed class AgentEvent {
     abstract val type: String
     abstract val timestamp: Instant
+
+    data class ConversationStartedEvent(
+        val conversationId: String,
+        override val timestamp: Instant = Instant.now()
+    ) : AgentEvent() {
+        override val type: String = "conversation_started"
+    }
 
     /**
      * Emitted when skill routing completes and a skill has been selected
@@ -137,6 +146,18 @@ sealed class AgentEvent {
         override val timestamp: Instant = Instant.now()
     ) : AgentEvent() {
         override val type: String = "final_response"
+    }
+
+    /**
+     * Emitted when a non-fatal issue occurs that the user should be aware of,
+     * such as conversation memory being unavailable. The agent continues
+     * processing despite the warning.
+     */
+    data class WarningEvent(
+        val message: String,
+        override val timestamp: Instant = Instant.now()
+    ) : AgentEvent() {
+        override val type: String = "warning"
     }
 
     /**

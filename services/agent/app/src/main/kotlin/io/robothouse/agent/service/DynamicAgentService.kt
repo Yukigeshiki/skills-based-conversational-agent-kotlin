@@ -6,6 +6,7 @@ import dev.langchain4j.data.message.ChatMessage
 import dev.langchain4j.data.message.SystemMessage
 import dev.langchain4j.data.message.ToolExecutionResultMessage
 import dev.langchain4j.data.message.UserMessage
+import io.robothouse.agent.model.ConversationMessage
 import dev.langchain4j.model.chat.ChatModel
 import dev.langchain4j.model.chat.request.ChatRequest
 import dev.langchain4j.service.tool.ToolExecutor
@@ -50,14 +51,14 @@ class DynamicAgentService(
      * plan and executes each step sequentially. Otherwise, executes directly
      * in a single agent loop.
      */
-    fun chat(skill: Skill, userMessage: String, listener: AgentEventListener = AgentEventListener.NOOP): AgentResponse {
+    fun chat(skill: Skill, userMessage: String, listener: AgentEventListener = AgentEventListener.NOOP, conversationHistory: List<ConversationMessage> = emptyList()): AgentResponse {
         log.debug { "Processing chat request for skill: name=${skill.name}, tools=${skill.toolNames}" }
 
         val specifications = toolRepository.getSpecificationsByNames(skill.toolNames)
         val executors = toolRepository.getExecutorsByNames(skill.toolNames)
 
         if (skill.planningPrompt == null) {
-            return executeStep(skill.systemPrompt, userMessage, specifications, executors, skill.name, listener)
+            return executeStep(skill.systemPrompt, userMessage, specifications, executors, skill.name, listener, conversationHistory = conversationHistory)
         }
 
         val plan = taskPlanningService.createPlan(skill.planningPrompt!!, userMessage, specifications)
@@ -65,7 +66,7 @@ class DynamicAgentService(
         emitEvent(listener) { AgentEvent.PlanCreatedEvent(plan = plan) }
 
         if (plan.steps.size <= 1) {
-            val response = executeStep(skill.systemPrompt, userMessage, specifications, executors, skill.name, listener)
+            val response = executeStep(skill.systemPrompt, userMessage, specifications, executors, skill.name, listener, conversationHistory = conversationHistory)
             return response.copy(plan = plan)
         }
 
@@ -141,12 +142,17 @@ class DynamicAgentService(
         executors: Map<String, ToolExecutor>,
         skillName: String,
         listener: AgentEventListener = AgentEventListener.NOOP,
-        emitFinalResponse: Boolean = true
+        emitFinalResponse: Boolean = true,
+        conversationHistory: List<ConversationMessage> = emptyList()
     ): AgentResponse {
-        val messages = mutableListOf<ChatMessage>(
-            SystemMessage.from(systemPrompt),
-            UserMessage.from(userMessage)
-        )
+        val messages = mutableListOf<ChatMessage>(SystemMessage.from(systemPrompt))
+        conversationHistory.forEach { msg ->
+            when (msg.role) {
+                "user" -> messages.add(UserMessage.from(msg.content))
+                "assistant" -> messages.add(AiMessage.from(msg.content))
+            }
+        }
+        messages.add(UserMessage.from(userMessage))
 
         val steps = mutableListOf<ToolExecutionStep>()
         val taskMemory = TaskMemory()

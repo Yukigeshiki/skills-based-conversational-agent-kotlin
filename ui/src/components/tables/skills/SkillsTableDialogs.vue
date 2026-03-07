@@ -154,23 +154,17 @@ import { skillService } from '@/services'
 import type { CreateSkillRequest, UpdateSkillRequest } from '@/types/skill'
 
 interface Props {
-  createDialogOpen: boolean
   createError?: string
   createSubmitting: boolean
-  editDialogOpen: boolean
   editError?: string
   editSubmitting: boolean
   editingSkillId?: string
-  deleteDialogOpen: boolean
   deleteError?: string
   deleteSubmitting: boolean
 }
 
 const props = defineProps<Props>()
 const emit = defineEmits<{
-  'update:createDialogOpen': [value: boolean]
-  'update:editDialogOpen': [value: boolean]
-  'update:deleteDialogOpen': [value: boolean]
   'create': [data: CreateSkillRequest]
   'edit': [data: UpdateSkillRequest]
   'confirm-delete': []
@@ -197,7 +191,7 @@ const editForm = reactive({
 const editToolNamesInput = ref('')
 
 // Reset create form when dialog opens
-watch(() => props.createDialogOpen, (open) => {
+watch(createDialogOpen, (open) => {
   if (open) {
     createForm.name = ''
     createForm.description = ''
@@ -210,7 +204,7 @@ watch(() => props.createDialogOpen, (open) => {
 const editLoading = ref(false)
 
 // Fetch skill data independently when edit dialog opens
-watch(() => props.editDialogOpen, async (open) => {
+watch(editDialogOpen, async (open) => {
   if (open && props.editingSkillId) {
     editLoading.value = true
     try {
@@ -221,7 +215,7 @@ watch(() => props.editDialogOpen, async (open) => {
       editForm.planningPrompt = skill.planningPrompt || ''
       editToolNamesInput.value = skill.toolNames.join(', ')
     } catch {
-      emit('update:editDialogOpen', false)
+      editDialogOpen.value = false
     } finally {
       editLoading.value = false
     }

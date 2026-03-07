@@ -1,16 +1,23 @@
 package io.robothouse.agent.controller
 
 import io.robothouse.agent.model.ChatRequest
+import io.robothouse.agent.model.ConversationMessage
+import io.robothouse.agent.service.ConversationMemoryService
 import io.robothouse.agent.service.StreamingChatService
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import jakarta.validation.constraints.Pattern
 import org.springframework.http.MediaType
 import org.springframework.validation.annotation.Validated
+import org.springframework.web.bind.annotation.CrossOrigin
+import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
-import org.springframework.web.bind.annotation.CrossOrigin
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 
@@ -19,7 +26,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
  *
  * Routes incoming messages to the appropriate skill and streams agent
  * events as Server-Sent Events for real-time observability of skill
- * routing, planning, tool execution, and LLM reasoning.
+ * routing, planning, tool execution, and LLM reasoning. Supports
+ * conversation history via Redis-backed memory.
  */
 @RestController
 @RequestMapping("/api/chat")
@@ -27,16 +35,30 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 @Tag(name = "Chat", description = "Agent chat endpoints")
 @Validated
 class ChatController(
-    private val streamingChatService: StreamingChatService
+    private val streamingChatService: StreamingChatService,
+    private val conversationMemoryService: ConversationMemoryService
 ) {
 
-    /**
-     * Streams agent events as Server-Sent Events for real-time observability
-     * of skill routing, planning, tool execution, and LLM reasoning.
-     */
     @Operation(summary = "Stream a chat interaction via SSE", description = "Sends a message and streams agent events as Server-Sent Events")
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "SSE stream started successfully"),
+            ApiResponse(responseCode = "400", description = "Invalid request")
+        ]
+    )
     @PostMapping(produces = [MediaType.TEXT_EVENT_STREAM_VALUE])
     fun chat(@RequestBody @Valid request: ChatRequest): SseEmitter {
-        return streamingChatService.streamChat(request.message)
+        return streamingChatService.streamChat(request.message, request.conversationId)
+    }
+
+    @Operation(summary = "Get conversation history", description = "Returns the message history for a conversation by its ID")
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "Conversation history returned successfully")
+        ]
+    )
+    @GetMapping("/{conversationId}/history")
+    fun getHistory(@PathVariable @Pattern(regexp = "^[a-f0-9\\-]{36}$") conversationId: String): List<ConversationMessage> {
+        return conversationMemoryService.getHistory(conversationId)
     }
 }

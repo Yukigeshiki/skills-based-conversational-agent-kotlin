@@ -1,15 +1,3 @@
-export type ChatEventType =
-  | 'skill_matched'
-  | 'plan_created'
-  | 'plan_step_started'
-  | 'plan_step_completed'
-  | 'iteration_started'
-  | 'thought'
-  | 'tool_call_started'
-  | 'tool_call_completed'
-  | 'final_response'
-  | 'error'
-
 export interface PlanStep {
   stepNumber: number
   description: string
@@ -22,6 +10,12 @@ export interface TaskPlan {
 }
 
 export type PlanStepStatus = 'COMPLETED' | 'FAILED'
+
+export interface ConversationStartedEvent {
+  type: 'conversation_started'
+  conversationId: string
+  timestamp: string
+}
 
 export interface SkillMatchedEvent {
   type: 'skill_matched'
@@ -87,6 +81,12 @@ export interface FinalResponseEvent {
   timestamp: string
 }
 
+export interface WarningEvent {
+  type: 'warning'
+  message: string
+  timestamp: string
+}
+
 export interface ErrorEvent {
   type: 'error'
   message: string
@@ -94,6 +94,7 @@ export interface ErrorEvent {
 }
 
 export type ChatEvent =
+  | ConversationStartedEvent
   | SkillMatchedEvent
   | PlanCreatedEvent
   | PlanStepStartedEvent
@@ -103,4 +104,5 @@ export type ChatEvent =
   | ToolCallStartedEvent
   | ToolCallCompletedEvent
   | FinalResponseEvent
+  | WarningEvent
   | ErrorEvent

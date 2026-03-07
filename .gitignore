@@ -39,3 +39,8 @@ key.json
 .env.*
 
 !**/gradle-wrapper.jar
+/services/agent/daemon/
+/services/agent/caches/
+/services/agent/native/
+/services/agent/wrapper/
+/services/agent/.tmp/

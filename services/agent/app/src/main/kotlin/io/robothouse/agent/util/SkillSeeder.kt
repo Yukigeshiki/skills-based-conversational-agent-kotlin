@@ -35,12 +35,6 @@ class SkillSeeder(
 
         val skills = listOf(
             Skill(
-                name = "datetime-assistant",
-                description = "Helps with date, time, timezone conversions, and clock-related questions. Can tell the current time in any timezone.",
-                systemPrompt = "You are a date and time assistant. Help users with timezone conversions, current time queries, and date calculations. Use the DateTimeTool when you need to get the current time.",
-                toolNames = listOf("DateTimeTool")
-            ),
-            Skill(
                 name = "general-assistant",
                 description = "A general-purpose assistant that can help with a wide variety of questions and tasks including conversation, knowledge, and analysis.",
                 systemPrompt = "You are a helpful assistant. Answer questions concisely and accurately. Use available tools when appropriate.",

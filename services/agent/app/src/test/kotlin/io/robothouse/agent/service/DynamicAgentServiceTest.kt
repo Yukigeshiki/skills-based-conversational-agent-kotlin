@@ -3,12 +3,15 @@ package io.robothouse.agent.service
 import dev.langchain4j.agent.tool.ToolExecutionRequest
 import dev.langchain4j.agent.tool.ToolSpecification
 import dev.langchain4j.data.message.AiMessage
+import dev.langchain4j.data.message.ChatMessage
 import dev.langchain4j.model.chat.ChatModel
 import dev.langchain4j.model.chat.request.ChatRequest
 import dev.langchain4j.model.chat.response.ChatResponse
 import dev.langchain4j.service.tool.ToolExecutor
 import dev.langchain4j.data.message.SystemMessage
+import dev.langchain4j.data.message.UserMessage
 import io.robothouse.agent.config.AgentProperties
+import io.robothouse.agent.model.ConversationMessage
 import io.robothouse.agent.listener.AgentEventListener
 import io.robothouse.agent.entity.Skill
 import io.robothouse.agent.model.AgentEvent
@@ -524,6 +527,40 @@ class DynamicAgentServiceTest {
             ),
             eventTypes
         )
+    }
+
+    @Test
+    fun `injects conversation history into message list`() {
+        whenever(toolRepository.getSpecificationsByNames(any())).thenReturn(emptyList())
+        whenever(toolRepository.getExecutorsByNames(any())).thenReturn(emptyMap())
+
+        val capturedMessages = mutableListOf<List<ChatMessage>>()
+        val model = object : ChatModel {
+            override fun doChat(request: ChatRequest): ChatResponse {
+                capturedMessages.add(request.messages().toList())
+                return ChatResponse.builder().aiMessage(AiMessage.from("I remember you!")).build()
+            }
+        }
+        val service = DynamicAgentService(model, toolRepository, agentProperties, taskPlanningService)
+
+        val history = listOf(
+            ConversationMessage(role = "user", content = "My name is Alice"),
+            ConversationMessage(role = "assistant", content = "Nice to meet you, Alice!")
+        )
+
+        val result = service.chat(skill, "What's my name?", conversationHistory = history)
+
+        assertEquals("I remember you!", result.response)
+        val messages = capturedMessages[0]
+        // SystemMessage, UserMessage(history), AiMessage(history), UserMessage(current)
+        assertEquals(4, messages.size)
+        assertTrue(messages[0] is SystemMessage)
+        assertTrue(messages[1] is UserMessage)
+        assertEquals("My name is Alice", (messages[1] as UserMessage).singleText())
+        assertTrue(messages[2] is AiMessage)
+        assertEquals("Nice to meet you, Alice!", (messages[2] as AiMessage).text())
+        assertTrue(messages[3] is UserMessage)
+        assertEquals("What's my name?", (messages[3] as UserMessage).singleText())
     }
 
     @Test

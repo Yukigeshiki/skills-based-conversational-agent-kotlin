@@ -18,7 +18,7 @@ import org.testcontainers.junit.jupiter.Testcontainers
 @SpringBootTest
 @Testcontainers
 @ActiveProfiles("integration")
-@Import(PostgresContainerConfig::class)
+@Import(PostgresContainerConfig::class, RedisContainerConfig::class)
 class SkillRepositoryIntegrationTest {
 
     @Autowired

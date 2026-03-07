@@ -102,7 +102,6 @@
 
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
-import { Button } from '@/components/ui/button'
 import { TableHead } from '@/components/ui/table'
 import { Plus } from 'lucide-vue-next'
 import { BaseDataView, BaseTableExpandedRow, SortableTableHead } from '@/components/common'

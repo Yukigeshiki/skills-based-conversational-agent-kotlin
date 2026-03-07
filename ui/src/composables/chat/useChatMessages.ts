@@ -30,8 +30,8 @@ export function useChatMessages() {
     const idx = messages.value.findIndex((m) => m.id === messageId)
     if (idx === -1) return
 
-    const msg = messages.value[idx]
-    const updated = { ...msg, activities: [...msg.activities, event] }
+    const msg = messages.value[idx]!
+    const updated: ChatMessage = { ...msg, activities: [...msg.activities, event] }
 
     if (event.type === 'final_response') {
       updated.content = event.response
@@ -50,7 +50,7 @@ export function useChatMessages() {
     const idx = messages.value.findIndex((m) => m.id === messageId)
     if (idx === -1) return
 
-    const msg = messages.value[idx]
+    const msg = messages.value[idx]!
     if (msg.status === 'streaming') {
       const newMessages = [...messages.value]
       newMessages[idx] = { ...msg, status: 'complete' }
@@ -58,5 +58,9 @@ export function useChatMessages() {
     }
   }
 
-  return { messages, addUserMessage, startAssistantMessage, addActivity, completeMessage }
+  function setMessages(newMessages: ChatMessage[]): void {
+    messages.value = newMessages
+  }
+
+  return { messages, addUserMessage, startAssistantMessage, addActivity, completeMessage, setMessages }
 }

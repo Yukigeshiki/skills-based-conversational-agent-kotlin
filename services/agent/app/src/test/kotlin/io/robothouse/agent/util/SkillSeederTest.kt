@@ -36,8 +36,8 @@ class SkillSeederTest {
 
         seeder.run(null)
 
-        verify(skillRepository, times(2)).save(any<Skill>())
-        verify(embeddingStore, times(2)).add(any<Embedding>(), any<TextSegment>())
+        verify(skillRepository, times(1)).save(any<Skill>())
+        verify(embeddingStore, times(1)).add(any<Embedding>(), any<TextSegment>())
     }
 
     @Test

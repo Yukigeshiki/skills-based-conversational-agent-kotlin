@@ -42,6 +42,9 @@ dependencies {
     // Tokenizer
     implementation(libs.jtokkit)
 
+    // Redis
+    implementation(libs.spring.boot.starter.data.redis)
+
     // JPA, Flyway & PostgreSQL
     implementation(libs.spring.boot.starter.data.jpa)
     implementation(libs.flyway.core)

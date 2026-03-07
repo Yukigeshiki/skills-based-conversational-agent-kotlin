@@ -1,4 +1,5 @@
-import type { ChatEvent } from '@/types/chat'
+import type { ChatEvent, ConversationHistoryMessage } from '@/types/chat'
+import { apiClient } from './api'
 
 const API_URL = import.meta.env.AGENT_SERVICE_URL || 'http://localhost:9090'
 
@@ -9,26 +10,43 @@ export interface ChatStreamCallbacks {
 }
 
 class ChatService {
-  sendMessage(message: string, callbacks: ChatStreamCallbacks): AbortController {
+  sendMessage(
+    message: string,
+    callbacks: ChatStreamCallbacks,
+    conversationId?: string,
+  ): AbortController {
     const controller = new AbortController()
 
-    this.streamResponse(message, callbacks, controller.signal).catch((err) =>
+    this.streamResponse(message, callbacks, controller.signal, conversationId).catch((err) =>
       callbacks.onError(err instanceof Error ? err.message : 'Unexpected error'),
     )
 
     return controller
   }
 
+  async getHistory(conversationId: string): Promise<ConversationHistoryMessage[]> {
+    const response = await apiClient.get<ConversationHistoryMessage[]>(
+      `/api/chat/${conversationId}/history`,
+    )
+    return response.data
+  }
+
   private async streamResponse(
     message: string,
     callbacks: ChatStreamCallbacks,
     signal: AbortSignal,
+    conversationId?: string,
   ): Promise<void> {
     try {
+      const body: Record<string, string> = { message }
+      if (conversationId) {
+        body.conversationId = conversationId
+      }
+
       const response = await fetch(`${API_URL}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify(body),
         signal,
       })
 

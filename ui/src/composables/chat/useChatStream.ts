@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, type Ref } from 'vue'
 import { chatService } from '@/services/chat'
 import type { ChatEvent } from '@/types/chat'
 
@@ -9,7 +9,14 @@ export interface MessageActions {
   completeMessage: (messageId: string) => void
 }
 
-export function useChatStream(actions: MessageActions) {
+export interface ChatStreamOptions {
+  actions: MessageActions
+  conversationId: Ref<string | null>
+  onConversationStarted?: (id: string) => void
+}
+
+export function useChatStream(options: ChatStreamOptions) {
+  const { actions, conversationId, onConversationStarted } = options
   const isStreaming = ref(false)
   let abortController: AbortController | null = null
   let currentMessageId: string | null = null
@@ -23,27 +30,34 @@ export function useChatStream(actions: MessageActions) {
 
     const messageId = currentMessageId
 
-    abortController = chatService.sendMessage(message, {
-      onEvent(event: ChatEvent) {
-        actions.addActivity(messageId, event)
+    abortController = chatService.sendMessage(
+      message,
+      {
+        onEvent(event: ChatEvent) {
+          if (event.type === 'conversation_started' && onConversationStarted) {
+            onConversationStarted(event.conversationId)
+          }
+          actions.addActivity(messageId, event)
+        },
+        onError(error: string) {
+          actions.addActivity(messageId, {
+            type: 'error',
+            message: error,
+            timestamp: new Date().toISOString(),
+          })
+          isStreaming.value = false
+          abortController = null
+          currentMessageId = null
+        },
+        onComplete() {
+          actions.completeMessage(messageId)
+          isStreaming.value = false
+          abortController = null
+          currentMessageId = null
+        },
       },
-      onError(error: string) {
-        actions.addActivity(messageId, {
-          type: 'error',
-          message: error,
-          timestamp: new Date().toISOString(),
-        })
-        isStreaming.value = false
-        abortController = null
-        currentMessageId = null
-      },
-      onComplete() {
-        actions.completeMessage(messageId)
-        isStreaming.value = false
-        abortController = null
-        currentMessageId = null
-      },
-    })
+      conversationId.value ?? undefined,
+    )
   }
 
   function stop(): void {
