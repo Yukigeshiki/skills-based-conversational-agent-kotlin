@@ -1,101 +1,103 @@
-# skills-based-conversational-agent-kotlin
+# Skills-Based Conversational Agent
 
-A conversational agent that uses programmable skills - built with Spring Boot, Claude Sonnet 4.6 via LangChain4j Anthropic integration, and pgvector embeddings
+A skills-based agentic system built with Kotlin and Spring Boot. User messages are routed to programmable skills via semantic similarity, then executed through a tool-use agent loop powered by Claude. Real-time observability via SSE streaming.
 
-## Overview
+## How It Works
 
-User messages are embedded using AllMiniLmL6V2 (in-process ONNX) and matched against skill descriptions stored in PostgreSQL with pgvector. The best-matching skill's system prompt and tool subset are used to dynamically build a LangChain4j AI Service that calls Claude.
+```
+User message
+  -> Embed with AllMiniLmL6V2 (local ONNX, 384 dims)
+  -> Similarity search against skill descriptions in pgvector
+  -> Best-matching skill provides: system prompt, tools, optional planning prompt
+  -> Agent loop: Claude reasons, calls tools, observes results, repeats until done
+  -> SSE stream emits typed events throughout (skill matched, tool calls, thoughts, etc.)
+```
+
+Skills with a `planningPrompt` trigger multistep task decomposition — the agent breaks the request into steps, executes each with its own tool-use loop, then synthesizes results.
 
 ## Tech Stack
 
-- Kotlin 2.1.20, Java 21, Spring Boot 3.5.7
-- LangChain4j with Anthropic (Claude)
-- PostgreSQL 17 with pgvector for skill embeddings
-- AllMiniLmL6V2 embedding model (384 dimensions, local ONNX)
-- Gradle 8.14.1 with Kotlin DSL
+**Backend** (`services/agent/`) — Kotlin 2.1.20, Java 21, Spring Boot 3.5.7, LangChain4j (Claude Sonnet 4.6), PostgreSQL 17 + pgvector, Flyway, Gradle 8.14.1
 
-## Request Flow
-
-```
-POST /api/chat { "message": "What time is it in Tokyo?" }
-  -> SkillRouterService: embed message, similarity search pgvector
-  -> DynamicAgentService: build AiService with skill's prompt + tools
-  -> Claude responds, ChatResponse includes skill name
-```
+**Frontend** (`ui/`) — Vue 3, TypeScript, Vite, Tailwind CSS, Pinia, Radix/Reka UI primitives
 
 ## Prerequisites
 
 - Java 21+
-- Docker (for PostgreSQL with pgvector)
+- Docker (PostgreSQL with pgvector)
+- Node.js + pnpm (for UI)
 - `ANTHROPIC_API_KEY` environment variable
 
 ## Getting Started
 
 ```bash
 # Start PostgreSQL with pgvector
-docker compose up -d
+cd services/agent && docker compose up -d
 
-# Run the service
+# Run the backend (port 9090)
 ./gradlew bootRun
+
+# Run the UI (port 5174)
+cd ui && pnpm install && pnpm dev
 ```
 
-The app seeds two skills on first startup: `datetime-assistant` and `general-assistant`.
+Two skills are seeded on first startup: `datetime-assistant` and `general-assistant`.
 
-## API Endpoints
+## API
 
-### Chat
+### Chat (SSE)
 
 ```bash
-curl -X POST http://localhost:9090/api/chat \
+curl -N -X POST http://localhost:9090/api/chat \
   -H 'Content-Type: application/json' \
   -d '{"message": "What time is it in Tokyo?"}'
 ```
 
-Response includes which skill handled the request:
-
-```json
-{ "response": "...", "skill": "datetime-assistant" }
-```
+Streams events: `skill_matched`, `plan_created`, `iteration_started`, `thought`, `tool_call_started`, `tool_call_completed`, `final_response`, etc.
 
 ### Skills CRUD
 
 ```bash
-# List all skills
-curl http://localhost:9090/api/skills
-
-# Create a skill
-curl -X POST http://localhost:9090/api/skills \
+curl http://localhost:9090/api/skills                    # List
+curl -X POST http://localhost:9090/api/skills \          # Create
   -H 'Content-Type: application/json' \
   -d '{"name": "my-skill", "description": "...", "systemPrompt": "...", "toolNames": ["DateTimeTool"]}'
-
-# Update a skill
-curl -X PUT http://localhost:9090/api/skills/{id} \
-  -H 'Content-Type: application/json' \
-  -d '{"name": "my-skill", "description": "...", "systemPrompt": "...", "toolNames": ["DateTimeTool"]}'
+curl -X PATCH http://localhost:9090/api/skills/{id} ...  # Partial update
+curl -X DELETE http://localhost:9090/api/skills/{id}     # Delete
 ```
 
-### Other
-
-- Swagger UI: http://localhost:9090/swagger-ui.html
-- Health check: http://localhost:9090/actuator/health
+- Swagger UI: `http://localhost:9090/swagger-ui.html`
+- Health: `http://localhost:9090/actuator/health`
 
 ## Project Structure
 
 ```
-app/src/main/kotlin/io/robothouse/agent/
-  ChatAgent.kt              # LangChain4j proxy interface
-  config/                    # Spring config, embedding, routing properties
-  controller/                # Chat and Skill REST controllers
-  model/                     # JPA entities and DTOs
-  repository/                # SkillRepository (JPA), ToolRepository (bean scanner)
-  service/                   # SkillRouterService, DynamicAgentService
-  tool/                      # Tool implementations (DateTimeTool)
-  util/                      # SkillSeeder, Log extension
+services/agent/app/src/main/kotlin/io/robothouse/agent/
+  config/        # Spring config, embedding, agent/routing properties
+  controller/    # ChatController (SSE), SkillController (CRUD)
+  service/       # DynamicAgentService, SkillRouterService, StreamingChatService, TaskPlanningService
+  model/         # Entities, DTOs, AgentEvent (sealed class), TaskMemory
+  repository/    # SkillRepository (JPA), ToolRepository (bean scanner)
+  tool/          # Tool implementations (DateTimeTool)
+  util/          # SkillSeeder, logging
+
+ui/src/
+  views/         # ChatView, SkillsView
+  components/    # Skills table with CRUD dialogs, Shadcn-style primitives
+  composables/   # Table logic, skill CRUD, filters, view modes
+  services/      # Axios client, SSE helper, SkillService
 ```
 
 ## Build Commands
 
-- **Build:** `./gradlew build`
-- **Run:** `./gradlew bootRun`
-- **Test:** `./gradlew test`
-- **Clean:** `./gradlew clean`
+Backend (from `services/agent/`):
+
+- `./gradlew build` — build
+- `./gradlew test` — run tests
+- `./gradlew bootRun` — run
+
+Frontend (from `ui/`):
+
+- `pnpm dev` — dev server
+- `pnpm build` — production build
+- `pnpm lint` — lint
