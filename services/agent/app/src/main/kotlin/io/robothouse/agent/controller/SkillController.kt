@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.PatchMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
+import org.springframework.web.bind.annotation.CrossOrigin
 import org.springframework.web.bind.annotation.RestController
 import java.util.UUID
 
@@ -29,6 +30,7 @@ import java.util.UUID
  */
 @RestController
 @RequestMapping("/api/skills")
+@CrossOrigin(originPatterns = ["http://localhost:[*]", "http://127.0.0.1:[*]"], allowCredentials = "true")
 @Tag(name = "Skills", description = "Skill management endpoints")
 @Validated
 class SkillController(
