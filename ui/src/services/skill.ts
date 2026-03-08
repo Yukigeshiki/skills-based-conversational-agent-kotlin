@@ -4,7 +4,6 @@ import type { Skill, GetSkillsParams, CreateSkillRequest, UpdateSkillRequest, Sk
 import type { PagedResponse } from '@/types/common'
 
 class SkillService {
-  private toolNamesCache: string[] | null = null
   /**
    * Fetches a paginated list of skills from the backend with optional filtering.
    *
@@ -16,18 +15,6 @@ class SkillService {
       params,
       paramsSerializer: { indexes: null },
     })
-    return response.data
-  }
-
-  /**
-   * Fetches the names of all registered tool beans.
-   *
-   * @returns A sorted list of tool names.
-   */
-  async getToolNames(): Promise<string[]> {
-    if (this.toolNamesCache) return this.toolNamesCache
-    const response = await apiClient.get<string[]>('/api/tools')
-    this.toolNamesCache = response.data
     return response.data
   }
 

@@ -21,25 +21,27 @@
       @clear-all-filters="onClearAllFilters"
     >
       <template #filter-controls>
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger as-child>
-              <button
-                class="h-9 w-9 flex items-center justify-center border rounded-full transition-colors cursor-pointer hover:bg-accent"
-                @click="openCreate"
-              >
-                <Plus class="h-4 w-4 text-foreground" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Add Skill</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-        <SkillFiltersDialog
-          :open="filterDialogOpen"
-          :filters="filters"
-          @update:open="filterDialogOpen = $event"
-          @update:filters="onApplyFilters"
-        />
+        <div class="flex items-center gap-1">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger as-child>
+                <button
+                  class="h-9 w-9 flex items-center justify-center border rounded-full transition-colors cursor-pointer hover:bg-accent"
+                  @click="openCreate"
+                >
+                  <Plus class="h-4 w-4 text-foreground" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Add Skill</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <SkillFiltersDialog
+            :open="filterDialogOpen"
+            :filters="filters"
+            @update:open="filterDialogOpen = $event"
+            @update:filters="onApplyFilters"
+          />
+        </div>
       </template>
 
       <template #headers="{ sortColumn, sortDirection, handleSort }">
@@ -97,20 +99,24 @@
     </BaseDataView>
 
     <!-- Dialogs -->
-    <SkillsTableDialogs
-      v-model:create-dialog-open="createDialogOpen"
-      v-model:edit-dialog-open="editDialogOpen"
-      v-model:delete-dialog-open="deleteDialogOpen"
-      :create-error="createError"
-      :create-submitting="createSubmitting"
-      :edit-error="editError"
-      :edit-submitting="editSubmitting"
-      :editing-skill-id="editingSkillId"
-      :delete-error="deleteError"
-      :delete-submitting="deleteSubmitting"
+    <SaveSkillDialog
+      v-model:open="createDialogOpen"
+      :error="createError"
+      :submitting="createSubmitting"
       @create="handleCreate"
+    />
+    <SaveSkillDialog
+      v-model:open="editDialogOpen"
+      :skill-id="editingSkillId"
+      :error="editError"
+      :submitting="editSubmitting"
       @edit="handleEdit"
-      @confirm-delete="handleDelete"
+    />
+    <DeleteSkillDialog
+      v-model:open="deleteDialogOpen"
+      :error="deleteError"
+      :submitting="deleteSubmitting"
+      @confirm="handleDelete"
     />
   </div>
 </template>
@@ -128,7 +134,8 @@ import { BaseDataView, BaseTableExpandedRow, SortableTableHead } from '@/compone
 import SkillsTableRow from './SkillsTableRow.vue'
 import SkillsTableCard from './SkillsTableCard.vue'
 import SkillsExpandedContent from './SkillsExpandedContent.vue'
-import SkillsTableDialogs from './SkillsTableDialogs.vue'
+import SaveSkillDialog from './SaveSkillDialog.vue'
+import DeleteSkillDialog from './DeleteSkillDialog.vue'
 import SkillFiltersDialog from './SkillFiltersDialog.vue'
 import { useTableBase } from '@/composables/tables'
 import { useExpandableRows } from '@/composables/tables'
