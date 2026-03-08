@@ -1,0 +1,43 @@
+name: Agent
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  test-and-build:
+    name: Test & Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if git diff --name-only HEAD~1 HEAD | grep -q '^services/agent/'; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Java 21
+        if: steps.changes.outputs.changed == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Setup Gradle
+        if: steps.changes.outputs.changed == 'true'
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run tests
+        if: steps.changes.outputs.changed == 'true'
+        working-directory: services/agent
+        run: ./gradlew test
+
+      - name: Docker build
+        if: steps.changes.outputs.changed == 'true'
+        run: docker build -t agent:${{ github.sha }} services/agent

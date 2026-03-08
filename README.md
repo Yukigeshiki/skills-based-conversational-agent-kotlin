@@ -1,5 +1,8 @@
 # Skills-Based Conversational Agent
 
+[![Agent](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/agent.yml/badge.svg)](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/agent.yml)
+[![UI](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/ui.yml/badge.svg)](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/ui.yml)
+
 A conversational agent built with Kotlin and Spring Boot. User messages are routed to skills via semantic similarity, then executed through a tool-use loop powered by Claude. The UI streams events in real time via SSE.
 
 ## How It Works
