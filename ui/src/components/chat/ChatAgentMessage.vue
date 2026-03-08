@@ -18,8 +18,7 @@
 /** Renders an assistant message with its activity log, error state, and sanitised markdown content. */
 <script setup lang="ts">
 import { computed } from 'vue'
-import { marked } from 'marked'
-import DOMPurify from 'dompurify'
+import { renderMarkdown } from '@/composables/ui'
 import type { ChatMessage } from '@/types/chat'
 import ChatActivityLog from './ChatActivityLog.vue'
 import ChatErrorMessage from './ChatErrorMessage.vue'
@@ -35,7 +34,5 @@ const displayActivities = computed(() =>
 )
 
 /** The message content parsed as markdown and sanitised with DOMPurify. */
-const renderedContent = computed(() =>
-  DOMPurify.sanitize(marked.parse(props.message.content) as string),
-)
+const renderedContent = computed(() => renderMarkdown(props.message.content))
 </script>

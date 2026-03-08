@@ -29,25 +29,30 @@
 
         <!-- System Prompt section -->
         <CollapsibleSection title="System Prompt" :default-expanded="false">
-          <pre class="text-sm whitespace-pre-wrap bg-background rounded border p-4 max-h-64 overflow-y-auto">{{ skill.systemPrompt }}</pre>
+          <div class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded border p-4 max-h-64" v-html="renderMarkdown(skill.systemPrompt)" />
         </CollapsibleSection>
 
         <!-- Planning Prompt section -->
         <CollapsibleSection v-if="skill.planningPrompt" title="Planning Prompt" :default-expanded="false">
-          <pre class="text-sm whitespace-pre-wrap bg-background rounded border p-4 max-h-64 overflow-y-auto">{{ skill.planningPrompt }}</pre>
+          <div class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded border p-4 max-h-64" v-html="renderMarkdown(skill.planningPrompt)" />
         </CollapsibleSection>
+        <div v-else>
+          <h3 class="font-semibold mb-2">Planning Prompt</h3>
+          <div class="text-sm text-muted-foreground italic">Not configured</div>
+        </div>
 
         <!-- Tools section -->
-        <CollapsibleSection title="Tools" :default-expanded="true">
-          <div v-if="skill.toolNames.length" class="flex flex-wrap gap-2">
+        <CollapsibleSection v-if="skill.toolNames.length" title="Tools" :default-expanded="true">
+          <div class="flex flex-wrap gap-2">
             <Badge v-for="tool in skill.toolNames" :key="tool" variant="outline">
               {{ tool }}
             </Badge>
           </div>
-          <div v-else class="text-sm text-muted-foreground italic">
-            No tools configured
-          </div>
         </CollapsibleSection>
+        <div v-else>
+          <h3 class="font-semibold mb-2">Tools</h3>
+          <div class="text-sm text-muted-foreground italic">Not configured</div>
+        </div>
 
         <!-- Metadata section -->
         <CollapsibleSection title="Metadata" :default-expanded="false">
@@ -86,6 +91,7 @@
 <script setup lang="ts">
 import { Badge } from '@/components/ui/badge'
 import { BaseExpandedContent, CollapsibleSection, DestructiveButton } from '@/components/common'
+import { renderMarkdown } from '@/composables/ui'
 import { useSkillFormatters } from '@/composables/skills'
 import type { Skill } from '@/types/skill'
 

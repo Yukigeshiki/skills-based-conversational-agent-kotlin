@@ -11,8 +11,8 @@
     </CardHeader>
     <CardContent class="pt-0 pb-4">
       <p class="text-xs text-muted-foreground mb-2">{{ truncateDescription(skill.description) }}</p>
-      <div class="flex flex-wrap gap-1 mb-2">
-        <Badge v-for="tool in skill.toolNames" :key="tool" variant="outline" class="text-xs">
+      <div class="flex gap-1 overflow-hidden h-5 mb-2">
+        <Badge v-for="tool in skill.toolNames" :key="tool" variant="outline" class="text-xs shrink-0">
           {{ tool }}
         </Badge>
       </div>

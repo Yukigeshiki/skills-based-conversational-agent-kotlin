@@ -46,7 +46,7 @@ const isEmbedded = inject(EXPANDED_CONTENT_EMBEDDED_KEY, false)
  */
 const containerClasses = computed(() =>
   isEmbedded
-    ? 'p-6'
+    ? 'p-6 text-sm'
     : 'bg-accent/50 border rounded-lg p-6 shadow-sm',
 )
 </script>

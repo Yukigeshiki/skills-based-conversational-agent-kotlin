@@ -1,6 +1,6 @@
 # Skills-Based Conversational Agent
 
-An agentic chat system built with Kotlin and Spring Boot. User messages are routed to skills via semantic similarity, then executed through a tool-use loop powered by Claude. The UI streams events in real time via SSE.
+A conversational agent built with Kotlin and Spring Boot. User messages are routed to skills via semantic similarity, then executed through a tool-use loop powered by Claude. The UI streams events in real time via SSE.
 
 ## How It Works
 
@@ -50,7 +50,7 @@ The UI provides a chat interface and a skills management page for creating, upda
 
 ## Tools
 
-A `DateTimeTool` is included for timezone-aware date/time queries. To add more tools, create a Spring `@Component` with methods annotated with LangChain4j's `@Tool`, then reference the class name in a skill's `toolNames`.
+An example tool (`DateTimeTool`) is included. To add more tools, create a Spring `@Component` in the tool directory, with methods annotated with LangChain4j's `@Tool`, then reference the class name in a skill's `toolNames`.
 
 ## API
 
