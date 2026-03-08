@@ -4,7 +4,7 @@
 [![Agent Build](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/agent-build.yml/badge.svg)](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/agent-build.yml)
 [![UI Build](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/ui-build.yml/badge.svg)](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/ui-build.yml)
 
-A conversational agent built with Kotlin and Spring Boot. User messages are routed to skills via semantic similarity, then executed through a tool-use loop powered by Claude. The UI streams events in real time via SSE.
+A conversational agent built with Kotlin and Spring Boot. User messages are routed to skills via semantic similarity, then executed through a tool-use loop powered by Claude (LangChain4j). The UI streams events in real time via SSE.
 
 ## How It Works
 
@@ -13,8 +13,6 @@ A conversational agent built with Kotlin and Spring Boot. User messages are rout
 3. The skill provides a system prompt, tool list, and optional planning prompt
 4. Agent loop: Claude reasons, calls tools, observes results, repeats until done
 5. SSE events stream back throughout (skill matched, thoughts, tool calls, response)
-
-Skills with a `planningPrompt` trigger multistep decomposition — the agent breaks the request into steps, executes each, then synthesizes results.
 
 ## Prerequisites
 
@@ -53,9 +51,6 @@ cd services/agent
 # Install Java 21 via SDKMAN
 sdk env install
 
-# Start PostgreSQL (pgvector) and Redis
-docker compose up -d
-
 # Run the backend (port 9090)
 ./gradlew bootRun
 ```
@@ -71,6 +66,14 @@ pnpm dev  # port 5173
 ```
 
 The UI provides a chat interface and a skills management page for creating, updating, and deleting skills.
+
+## Skills
+
+Skills define how the agent handles different types of requests. Each skill has a name, description, system prompt, optional planning prompt, and a list of tools. When a user sends a message, it is embedded and matched to the most relevant skill via semantic similarity search against skill descriptions.
+
+A `general-assistant` skill is seeded on first startup. To create additional skills, use the skills management page in the UI or the REST API. System and planning prompts should be written in markdown.
+
+Skills with a `planningPrompt` enable multistep execution — the agent decomposes the request into steps, executes each with the skill's tools, then synthesizes the results.
 
 ## Tools
 
