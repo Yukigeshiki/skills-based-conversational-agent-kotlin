@@ -17,6 +17,32 @@ services:
     volumes:
       - redisdata:/data
 
+  agent:
+    profiles: [all]
+    build:
+      context: ./services/agent
+    ports:
+      - "9090:9090"
+    environment:
+      SPRING_PROFILES_ACTIVE: production
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-agent_db}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-agent}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-agent}
+      SPRING_DATA_REDIS_HOST: redis
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+    depends_on:
+      - postgres
+      - redis
+
+  ui:
+    profiles: [all]
+    build:
+      context: ./ui
+    ports:
+      - "5173:80"
+    depends_on:
+      - agent
+
 volumes:
   pgdata:
   redisdata:

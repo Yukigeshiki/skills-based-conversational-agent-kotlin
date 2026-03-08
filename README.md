@@ -21,7 +21,27 @@ Skills with a `planningPrompt` trigger multistep decomposition — the agent bre
 
 ## Getting Started
 
-### Agent service
+### Docker Compose (full stack)
+
+```bash
+# Start everything — databases, agent service, and UI
+docker compose --profile all up -d
+```
+
+This builds and runs all services:
+- Agent service at http://localhost:9090
+- UI at http://localhost:5173
+- PostgreSQL (pgvector) and Redis
+
+To start only the databases:
+
+```bash
+docker compose up -d
+```
+
+### Local development
+
+#### Agent service
 
 ```bash
 cd services/agent
@@ -38,12 +58,12 @@ docker compose up -d
 
 A `general-assistant` skill is seeded on first startup.
 
-### UI
+#### UI
 
 ```bash
 cd ui
 pnpm install
-pnpm dev  # port 5174
+pnpm dev  # port 5173
 ```
 
 The UI provides a chat interface and a skills management page for creating, updating, and deleting skills.
