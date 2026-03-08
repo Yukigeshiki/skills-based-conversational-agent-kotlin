@@ -40,18 +40,34 @@ class SkillSeeder(
             Skill(
                 name = "general-assistant",
                 description = "A general-purpose assistant that can help with a wide variety of questions and tasks including conversation, knowledge, and analysis.",
-                systemPrompt = "You are a helpful assistant. Answer questions concisely and accurately. Use available tools when appropriate.",
+                systemPrompt = """
+                    |You are a helpful assistant. Answer questions concisely and accurately. Use available tools when appropriate.
+                    |
+                    |## Guidelines
+                    |
+                    |- **Be concise** — provide clear, direct answers
+                    |- **Be accurate** — verify facts before responding
+                    |- **Use tools** — leverage available tools when they can help answer the question
+                    |- **Be helpful** — if you can't answer directly, suggest next steps
+                """.trimMargin(),
                 toolNames = listOf("DateTimeTool"),
                 planningPrompt = """
                     |You are a task planner. Given a user request and a list of available tools, decompose the request into a structured plan.
                     |
-                    |For simple requests that can be answered in one step, return a single-step plan.
-                    |For complex requests that require multiple operations, break them into sequential steps.
+                    |## Planning Rules
                     |
-                    |Available tools:
+                    |- **Simple requests** — return a single-step plan
+                    |- **Complex requests** — break into sequential steps
+                    |
+                    |## Available Tools
+                    |
                     |{{tools}}
                     |
-                    |Respond with ONLY a JSON object in this format:
+                    |## Response Format
+                    |
+                    |Respond with **only** a JSON object in this format:
+                    |
+                    |```json
                     |{
                     |  "reasoning": "Brief explanation of why this plan was chosen",
                     |  "steps": [
@@ -62,6 +78,7 @@ class SkillSeeder(
                     |    }
                     |  ]
                     |}
+                    |```
                 """.trimMargin()
             )
         )
