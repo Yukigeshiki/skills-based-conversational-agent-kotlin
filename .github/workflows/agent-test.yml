@@ -1,12 +1,12 @@
-name: Agent
+name: Agent Test
 
 on:
   push:
     branches: [main]
 
 jobs:
-  test-and-build:
-    name: Test & Build
+  test:
+    name: Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -37,7 +37,3 @@ jobs:
         if: steps.changes.outputs.changed == 'true'
         working-directory: services/agent
         run: ./gradlew test
-
-      - name: Docker build
-        if: steps.changes.outputs.changed == 'true'
-        run: docker build -t agent:${{ github.sha }} services/agent
