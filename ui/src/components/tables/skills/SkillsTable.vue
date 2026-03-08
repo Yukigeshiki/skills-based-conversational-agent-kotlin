@@ -3,8 +3,8 @@
     <BaseDataView
       :loading="loading"
       :error="error"
-      :data="pagedData"
-      :active-filters="[]"
+      :data="data"
+      :active-filters="activeFilters"
       :current-page="currentPage"
       :page-size="pageSize"
       :sort-column="sortColumn"
@@ -17,14 +17,29 @@
       @update:page="(page) => goToPage(page, fetchData)"
       @update:page-size="(size) => { updatePageSize(size); fetchData() }"
       @sort="(column) => handleSort(column, fetchData)"
+      @remove-filter="onRemoveFilter"
+      @clear-all-filters="onClearAllFilters"
     >
-      <template #actions>
-        <button
-          @click="openCreate"
-          class="h-9 w-9 flex items-center justify-center border rounded-full transition-colors cursor-pointer text-muted-foreground hover:text-foreground hover:bg-accent"
-        >
-          <Plus class="h-4 w-4" />
-        </button>
+      <template #filter-controls>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <button
+                class="h-9 w-9 flex items-center justify-center border rounded-full transition-colors cursor-pointer hover:bg-accent"
+                @click="openCreate"
+              >
+                <Plus class="h-4 w-4 text-foreground" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Add Skill</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <SkillFiltersDialog
+          :open="filterDialogOpen"
+          :filters="filters"
+          @update:open="filterDialogOpen = $event"
+          @update:filters="onApplyFilters"
+        />
       </template>
 
       <template #headers="{ sortColumn, sortDirection, handleSort }">
@@ -101,35 +116,67 @@
 </template>
 
 /**
- * Skills management table with card/table view toggle, client-side sorting
+ * Skills management table with card/table view toggle, server-side sorting
  * and pagination, expandable row details, and CRUD dialogs.
  */
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { TableHead } from '@/components/ui/table'
 import { Plus } from 'lucide-vue-next'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { BaseDataView, BaseTableExpandedRow, SortableTableHead } from '@/components/common'
 import SkillsTableRow from './SkillsTableRow.vue'
 import SkillsTableCard from './SkillsTableCard.vue'
 import SkillsExpandedContent from './SkillsExpandedContent.vue'
 import SkillsTableDialogs from './SkillsTableDialogs.vue'
+import SkillFiltersDialog from './SkillFiltersDialog.vue'
 import { useTableBase } from '@/composables/tables'
 import { useExpandableRows } from '@/composables/tables'
 import { useSkillsTableLogic } from '@/composables/skills'
 import { skillService } from '@/services'
-import type { Skill, SkillSummary } from '@/types/skill'
+import type { Skill, SkillSummary, GetSkillsParams } from '@/types/skill'
+import type { ActiveFilter } from '@/composables/tables'
 import type { PagedResponse } from '@/types/common'
-import { ref } from 'vue'
 
 const {
   currentPage,
   pageSize,
   sortColumn,
   sortDirection,
+  sortString,
   handleSort,
   goToPage,
   updatePageSize,
+  removeFilter,
+  clearAllFilters,
+  applyFilters,
 } = useTableBase({ defaultSortColumn: 'createdAt', defaultSortDirection: 'desc' })
+
+const filters = ref<GetSkillsParams>({})
+const filterDialogOpen = ref(false)
+
+function onApplyFilters(newFilters: GetSkillsParams) {
+  applyFilters(newFilters, filters, (f) => { filters.value = f }, fetchData)
+}
+
+function onRemoveFilter(key: string) {
+  removeFilter(key, filters, fetchData)
+}
+
+function onClearAllFilters() {
+  clearAllFilters(filters, fetchData)
+}
+
+const activeFilters = computed<ActiveFilter[]>(() => {
+  const entries: ActiveFilter[] = []
+  if (filters.value.search) {
+    entries.push({ key: 'search', label: 'Search', value: filters.value.search })
+  }
+  if (filters.value.tools?.length) {
+    entries.push({ key: 'tools', label: 'Tools', value: filters.value.tools.join(', ') })
+  }
+  return entries
+})
 
 const {
   expandedRows,
@@ -141,7 +188,7 @@ const {
 
 const loading = ref(false)
 const error = ref<string | undefined>(undefined)
-const skills = ref<Skill[]>([])
+const data = ref<PagedResponse<SkillSummary> | undefined>(undefined)
 
 const {
   createDialogOpen,
@@ -165,52 +212,19 @@ const {
   onDataChanged: fetchData,
 })
 
-/**
- * Derives a paged, sorted response from the full skills list for the current
- * page, page size, sort column, and sort direction.
- */
-const pagedData = computed<PagedResponse<SkillSummary> | undefined>(() => {
-  if (!skills.value.length && !loading.value) {
-    return { content: [], empty: true, totalPages: 1, totalElements: 0, first: true, last: true }
-  }
-  if (!skills.value.length) return undefined
-
-  const page = currentPage.value
-  const size = parseInt(pageSize.value)
-  const sorted = [...skills.value].sort((a, b) => {
-    const col = sortColumn.value as keyof Skill
-    const aVal = String(a[col] ?? '')
-    const bVal = String(b[col] ?? '')
-    const cmp = aVal.localeCompare(bVal)
-    return sortDirection.value === 'asc' ? cmp : -cmp
-  })
-
-  const start = page * size
-  const content = sorted.slice(start, start + size).map(s => ({
-    id: s.id,
-    name: s.name,
-    description: s.description,
-    toolNames: s.toolNames,
-    createdAt: s.createdAt,
-    updatedAt: s.updatedAt,
-  }))
-
-  return {
-    content,
-    empty: sorted.length === 0,
-    totalPages: Math.max(1, Math.ceil(sorted.length / size)),
-    totalElements: sorted.length,
-    first: page === 0,
-    last: start + size >= sorted.length,
-  }
-})
-
-/** Fetches all skills from the API and updates the local state. */
+/** Fetches a page of skills from the API with current filters, sort, and pagination. */
 async function fetchData() {
   loading.value = true
   error.value = undefined
   try {
-    skills.value = await skillService.getAllSkills()
+    const params: GetSkillsParams = {
+      page: currentPage.value,
+      size: parseInt(pageSize.value),
+      sort: sortString.value,
+    }
+    if (filters.value.search) params.search = filters.value.search
+    if (filters.value.tools?.length) params.tools = filters.value.tools
+    data.value = await skillService.getAllSkills(params)
   } catch (err) {
     error.value = err instanceof Error ? err.message : 'Failed to load skills'
   } finally {

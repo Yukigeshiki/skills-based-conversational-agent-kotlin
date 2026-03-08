@@ -6,8 +6,9 @@ import java.util.UUID
 
 /**
  * JPA repository for [Skill] entities with support for partial updates
- * via the [UpdateSkillRepository] custom fragment.
+ * via the [UpdateSkillRepository] custom fragment and filtered queries
+ * via the [FilterSkillRepository] custom fragment.
  */
-interface SkillRepository : JpaRepository<Skill, UUID>, UpdateSkillRepository {
+interface SkillRepository : JpaRepository<Skill, UUID>, UpdateSkillRepository, FilterSkillRepository {
     fun findByName(name: String): Skill?
 }

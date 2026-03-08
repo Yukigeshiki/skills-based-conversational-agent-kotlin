@@ -39,6 +39,9 @@
         </TooltipProvider>
       </div>
 
+      <!-- Filter dialogs (left, after view toggle) -->
+      <slot name="filter-controls" />
+
       <!-- Active filter badges -->
       <ActiveTableFilters
         :filters="activeFilters"

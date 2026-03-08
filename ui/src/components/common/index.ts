@@ -1,6 +1,7 @@
 export { default as ActiveTableFilters } from './ActiveTableFilters.vue'
 export type { ActiveFilter } from './ActiveTableFilters.vue'
 export { default as BaseExpandedContent } from './BaseExpandedContent.vue'
+export { default as BaseFilterDialog } from './BaseFilterDialog.vue'
 export { default as BaseDataView } from './BaseDataView.vue'
 export { default as BaseTableCard } from './BaseTableCard.vue'
 export { default as BaseTableExpandedRow } from './BaseTableExpandedRow.vue'

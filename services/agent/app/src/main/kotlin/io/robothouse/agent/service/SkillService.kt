@@ -12,6 +12,8 @@ import io.robothouse.agent.model.SkillRequest
 import io.robothouse.agent.model.UpdateSkillRequest
 import io.robothouse.agent.repository.SkillRepository
 import io.robothouse.agent.util.log
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
 import org.springframework.transaction.support.TransactionTemplate
 import java.util.UUID
@@ -31,11 +33,14 @@ class SkillService(
 ) {
 
     /**
-     * Returns all registered skills.
+     * Returns a paged result of skills, optionally filtered by search term and/or tool names.
      */
-    fun findAll(): List<Skill> {
-        log.debug { "Fetching all skills" }
-        return skillRepository.findAll()
+    fun findAllPaged(search: String? = null, tools: List<String>? = null, pageable: Pageable): Page<Skill> {
+        log.debug { "Fetching paged skills: search=$search, tools=$tools, page=${pageable.pageNumber}, size=${pageable.pageSize}" }
+        if (search != null || !tools.isNullOrEmpty()) {
+            return skillRepository.findAllFilteredPaged(search, tools, pageable)
+        }
+        return skillRepository.findAll(pageable)
     }
 
     /**

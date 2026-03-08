@@ -1,15 +1,33 @@
 /** CRUD service for managing agent skills via the REST API. */
 import { apiClient } from './api'
-import type { Skill, CreateSkillRequest, UpdateSkillRequest } from '@/types/skill'
+import type { Skill, GetSkillsParams, CreateSkillRequest, UpdateSkillRequest, SkillSummary } from '@/types/skill'
+import type { PagedResponse } from '@/types/common'
 
 class SkillService {
+  private toolNamesCache: string[] | null = null
   /**
-   * Fetches all skills from the backend.
+   * Fetches a paginated list of skills from the backend with optional filtering.
    *
-   * @returns The full list of skills.
+   * @param params - Optional filter and pagination parameters.
+   * @returns A paged response of skill summaries.
    */
-  async getAllSkills(): Promise<Skill[]> {
-    const response = await apiClient.get<Skill[]>('/api/skills')
+  async getAllSkills(params?: GetSkillsParams): Promise<PagedResponse<SkillSummary>> {
+    const response = await apiClient.get<PagedResponse<SkillSummary>>('/api/skills', {
+      params,
+      paramsSerializer: { indexes: null },
+    })
+    return response.data
+  }
+
+  /**
+   * Fetches the names of all registered tool beans.
+   *
+   * @returns A sorted list of tool names.
+   */
+  async getToolNames(): Promise<string[]> {
+    if (this.toolNamesCache) return this.toolNamesCache
+    const response = await apiClient.get<string[]>('/api/tools')
+    this.toolNamesCache = response.data
     return response.data
   }
 

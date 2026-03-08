@@ -1,3 +1,3 @@
-export type { PagedResponse } from './common'
+export type { PagedResponse, SortInfo } from './common'
 export * from './skill'
 export * from './chat'

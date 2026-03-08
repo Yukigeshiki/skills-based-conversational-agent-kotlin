@@ -1,2 +1,2 @@
 export type { Skill, SkillSummary } from './entities'
-export type { CreateSkillRequest, UpdateSkillRequest } from './requests'
+export type { GetSkillsParams, CreateSkillRequest, UpdateSkillRequest } from './requests'
