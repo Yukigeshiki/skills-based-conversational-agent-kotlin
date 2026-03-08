@@ -44,3 +44,4 @@ key.json
 /services/agent/native/
 /services/agent/wrapper/
 /services/agent/.tmp/
+/services/agent/kotlin-profile/

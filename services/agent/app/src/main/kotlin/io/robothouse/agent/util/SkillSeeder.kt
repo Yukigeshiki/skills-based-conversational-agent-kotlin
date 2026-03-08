@@ -3,7 +3,9 @@ package io.robothouse.agent.util
 import dev.langchain4j.data.document.Metadata
 import dev.langchain4j.data.segment.TextSegment
 import dev.langchain4j.model.embedding.EmbeddingModel
+import dev.langchain4j.store.embedding.EmbeddingSearchRequest
 import dev.langchain4j.store.embedding.EmbeddingStore
+import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder.metadataKey
 import io.robothouse.agent.entity.Skill
 import io.robothouse.agent.repository.SkillRepository
 import org.springframework.boot.ApplicationArguments
@@ -28,6 +30,7 @@ class SkillSeeder(
     override fun run(args: ApplicationArguments?) {
         if (skillRepository.count() > 0) {
             log.info { "Skills already seeded, skipping" }
+            reconcileEmbeddings()
             return
         }
 
@@ -70,11 +73,55 @@ class SkillSeeder(
                 log.warn { "Skill ID was null after save: name=${saved.name}" }
                 throw IllegalStateException("Skill ID was null after save: name=${saved.name}")
             }
-            val segment = TextSegment.from(skill.description, Metadata.from("skillId", skillId))
+            val descriptionHash = skill.description.hashCode().toString()
+            val metadata = Metadata.from("skillId", skillId).put("descriptionHash", descriptionHash)
+            val segment = TextSegment.from(skill.description, metadata)
             embeddingStore.add(embedding, segment)
             log.info { "Seeded skill: ${skill.name}" }
         }
 
         log.info { "Skill seeding complete" }
+    }
+
+    /**
+     * Ensures all persisted skills have up-to-date embeddings in the store.
+     *
+     * Compares a hash of each skill's description against the hash stored
+     * in the embedding metadata and only re-embeds when the description has changed
+     * or the embedding is missing.
+     */
+    private fun reconcileEmbeddings() {
+        val skills = skillRepository.findAll()
+        var reembedded = 0
+
+        for (skill in skills) {
+            val skillId = skill.id?.toString() ?: continue
+            val descriptionHash = skill.description.hashCode().toString()
+
+            val existing = embeddingStore.search(
+                EmbeddingSearchRequest.builder()
+                    .queryEmbedding(embeddingModel.embed(skill.description).content())
+                    .maxResults(1)
+                    .filter(metadataKey("skillId").isEqualTo(skillId))
+                    .build()
+            ).matches().firstOrNull()
+
+            val existingHash = existing?.embedded()?.metadata()?.getString("descriptionHash")
+            if (existing != null && existingHash == descriptionHash) {
+                continue
+            }
+
+            embeddingStore.removeAll(metadataKey("skillId").isEqualTo(skillId))
+            val embedding = embeddingModel.embed(skill.description).content()
+            val metadata = Metadata.from("skillId", skillId).put("descriptionHash", descriptionHash)
+            val segment = TextSegment.from(skill.description, metadata)
+            embeddingStore.add(embedding, segment)
+            reembedded++
+            log.info { "Re-embedded skill: ${skill.name} (id=$skillId)" }
+        }
+
+        if (reembedded > 0) {
+            log.info { "Reconciled embeddings: $reembedded skill(s) re-embedded" }
+        }
     }
 }

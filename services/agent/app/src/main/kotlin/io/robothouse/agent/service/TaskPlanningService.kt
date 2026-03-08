@@ -11,6 +11,7 @@ import io.robothouse.agent.config.AgentProperties
 import io.robothouse.agent.model.PlanStep
 import io.robothouse.agent.model.TaskPlan
 import io.robothouse.agent.util.log
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
 
 /**
@@ -21,7 +22,7 @@ import org.springframework.stereotype.Service
  */
 @Service
 class TaskPlanningService(
-    private val chatModel: ChatModel,
+    @param:Qualifier("lightChatModel") private val chatModel: ChatModel,
     private val agentProperties: AgentProperties
 ) {
 

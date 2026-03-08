@@ -15,7 +15,7 @@ private val log = KotlinLogging.logger {}
  * Spring Boot application entry point for the Agent Service.
  */
 @Validated
-@SpringBootApplication
+@SpringBootApplication(exclude = [dev.langchain4j.anthropic.spring.AutoConfig::class])
 class Application
 
 /**

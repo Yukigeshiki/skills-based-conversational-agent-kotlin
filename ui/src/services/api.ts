@@ -36,7 +36,7 @@ apiClient.interceptors.response.use(
   (error) => {
     if (error.response) {
       const { data, status } = error.response
-      const errorMessage = data?.message || 'An unexpected error occurred'
+      const errorMessage = data?.detail || data?.message || data?.title || 'An unexpected error occurred'
       console.error(`[API] Request failed with status ${status}:`, errorMessage)
       const enhancedError = new Error(errorMessage) as Error & { status: number }
       enhancedError.status = status

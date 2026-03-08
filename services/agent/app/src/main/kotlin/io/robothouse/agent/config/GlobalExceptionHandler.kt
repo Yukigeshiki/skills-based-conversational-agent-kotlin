@@ -23,11 +23,13 @@ class GlobalExceptionHandler {
 
     @ExceptionHandler(BadRequestException::class)
     fun handleBadRequestException(e: BadRequestException): ResponseEntity<ProblemDetail> {
+        log.warn { "Bad request: ${e.message}" }
         return buildResponse(e.message, e.status)
     }
 
     @ExceptionHandler(NotFoundException::class)
     fun handleNotFoundException(e: NotFoundException): ResponseEntity<ProblemDetail> {
+        log.warn { "Not found: ${e.message}" }
         return buildResponse(e.message, e.status)
     }
 
@@ -39,6 +41,7 @@ class GlobalExceptionHandler {
 
     @ExceptionHandler(HttpMessageNotReadableException::class)
     fun handleHttpMessageNotReadableException(e: HttpMessageNotReadableException): ResponseEntity<ProblemDetail> {
+        log.warn(e) { "HTTP message not readable" }
         val rootCause = e.rootCause
         val message = if (rootCause is IllegalArgumentException) {
             rootCause.message
@@ -53,6 +56,7 @@ class GlobalExceptionHandler {
         val message = e.bindingResult.fieldErrors.firstOrNull()?.defaultMessage
             ?: e.bindingResult.globalErrors.firstOrNull()?.defaultMessage
             ?: "Validation failed"
+        log.warn { "Validation failed: $message" }
         return buildResponse(message, HttpStatus.BAD_REQUEST)
     }
 
@@ -60,11 +64,13 @@ class GlobalExceptionHandler {
     fun handleConstraintViolationException(e: ConstraintViolationException): ResponseEntity<ProblemDetail> {
         val message = e.constraintViolations.firstOrNull()?.message
             ?: "Validation failed"
+        log.warn { "Constraint violation: $message" }
         return buildResponse(message, HttpStatus.BAD_REQUEST)
     }
 
     @ExceptionHandler(NoHandlerFoundException::class)
     fun handleNoHandlerFoundException(e: NoHandlerFoundException): ResponseEntity<ProblemDetail> {
+        log.warn { "No handler found: ${e.requestURL}" }
         return buildResponse("The requested endpoint was not found", HttpStatus.NOT_FOUND)
     }
 

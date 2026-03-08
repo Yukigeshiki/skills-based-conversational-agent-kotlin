@@ -107,12 +107,21 @@ class SkillService(
         log.info { "Deleted skill: id=$id" }
     }
 
+    /**
+     * Embeds the skill's description and stores it in the embedding store
+     * with the skill ID and a description hash in the metadata.
+     */
     private fun embedSkill(skill: Skill) {
         val embedding = embeddingModel.embed(skill.description).content()
-        val segment = TextSegment.from(skill.description, Metadata.from("skillId", skill.id.toString()))
+        val descriptionHash = skill.description.hashCode().toString()
+        val metadata = Metadata.from("skillId", skill.id.toString()).put("descriptionHash", descriptionHash)
+        val segment = TextSegment.from(skill.description, metadata)
         embeddingStore.add(embedding, segment)
     }
 
+    /**
+     * Removes all embeddings associated with the given skill ID from the embedding store.
+     */
     private fun removeEmbeddingsBySkillId(skillId: String) {
         embeddingStore.removeAll(metadataKey("skillId").isEqualTo(skillId))
     }

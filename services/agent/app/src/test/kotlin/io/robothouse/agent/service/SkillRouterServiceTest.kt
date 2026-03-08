@@ -27,7 +27,7 @@ class SkillRouterServiceTest {
     private val embeddingModel: EmbeddingModel = mock()
     private val embeddingStore: EmbeddingStore<TextSegment> = mock()
     private val skillRepository: SkillRepository = mock()
-    private val properties = SkillRoutingProperties(minSimilarityScore = 0.5, fallbackSkillName = "general-assistant")
+    private val properties = SkillRoutingProperties(minSimilarityScore = 0.6, fallbackSkillName = "general-assistant")
 
     private val routerService = SkillRouterService(embeddingModel, embeddingStore, skillRepository, properties)
 

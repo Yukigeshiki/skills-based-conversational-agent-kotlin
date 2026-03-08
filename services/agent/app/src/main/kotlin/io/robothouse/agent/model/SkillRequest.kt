@@ -3,7 +3,6 @@ package io.robothouse.agent.model
 import io.robothouse.agent.validator.MaxTokens
 import io.robothouse.agent.validator.RegisteredTools
 import jakarta.validation.constraints.NotBlank
-import jakarta.validation.constraints.NotEmpty
 import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
 
@@ -21,13 +20,12 @@ data class SkillRequest(
     val description: String,
 
     @field:NotBlank(message = "System prompt must not be blank")
-    @field:MaxTokens(500, message = "System prompt must not exceed 500 tokens")
+    @field:MaxTokens(1000, message = "System prompt must not exceed 1000 tokens")
     val systemPrompt: String,
 
-    @field:NotEmpty(message = "Tool names must not be empty")
     @field:Size(max = 10, message = "Tool names must not exceed 10 entries")
     @field:RegisteredTools
-    val toolNames: List<@Pattern(regexp = "^[a-zA-Z][a-zA-Z0-9]*$", message = "Tool name must be camelCase alphanumeric") String>,
+    val toolNames: List<@Pattern(regexp = "^[a-zA-Z][a-zA-Z0-9]*$", message = "Tool name must be camelCase alphanumeric") String> = emptyList(),
 
     @field:MaxTokens(500, message = "Planning prompt must not exceed 500 tokens")
     val planningPrompt: String? = null

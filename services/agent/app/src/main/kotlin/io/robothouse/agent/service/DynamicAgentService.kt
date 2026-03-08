@@ -24,7 +24,7 @@ import io.robothouse.agent.model.ToolExecutionStep
 import io.robothouse.agent.model.ToolObservation
 import io.robothouse.agent.repository.ToolRepository
 import io.robothouse.agent.util.log
-import org.springframework.boot.context.properties.EnableConfigurationProperties
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
 import java.util.concurrent.TimeoutException
 
@@ -36,9 +36,9 @@ import java.util.concurrent.TimeoutException
  * Skills without a planning prompt execute directly in a single agent loop.
  */
 @Service
-@EnableConfigurationProperties(AgentProperties::class)
 class DynamicAgentService(
-    private val chatModel: ChatModel,
+    @param:Qualifier("agentChatModel") private val agentChatModel: ChatModel,
+    @param:Qualifier("lightChatModel") private val lightChatModel: ChatModel,
     private val toolRepository: ToolRepository,
     private val agentProperties: AgentProperties,
     private val taskPlanningService: TaskPlanningService
@@ -148,11 +148,11 @@ class DynamicAgentService(
         val messages = mutableListOf<ChatMessage>(SystemMessage.from(systemPrompt))
         conversationHistory.forEach { msg ->
             when (msg.role) {
-                "user" -> messages.add(UserMessage.from(msg.content))
-                "assistant" -> messages.add(AiMessage.from(msg.content))
+                "user" -> appendUserMessage(messages, msg.content)
+                "assistant" -> appendAssistantMessage(messages, msg.content)
             }
         }
-        messages.add(UserMessage.from(userMessage))
+        appendUserMessage(messages, userMessage)
 
         val steps = mutableListOf<ToolExecutionStep>()
         val taskMemory = TaskMemory()
@@ -172,12 +172,14 @@ class DynamicAgentService(
             log.debug { "Agent loop iteration $iteration for skill: name=$skillName" }
             emitEvent(listener) { AgentEvent.IterationStartedEvent(iterationNumber = iteration) }
 
-            val request = ChatRequest.builder()
+            val requestBuilder = ChatRequest.builder()
                 .messages(messages)
-                .toolSpecifications(specifications)
-                .build()
+            if (specifications.isNotEmpty()) {
+                requestBuilder.toolSpecifications(specifications)
+            }
+            val request = requestBuilder.build()
 
-            val response = chatModel.chat(request)
+            val response = agentChatModel.chat(request)
             val aiMessage = response.aiMessage()
             messages.add(aiMessage)
 
@@ -299,13 +301,42 @@ class DynamicAgentService(
             )
             .build()
 
-        val response = chatModel.chat(request)
+        val response = lightChatModel.chat(request)
         val text = response.aiMessage().text()
         if (text.isNullOrBlank()) {
             log.warn { "Synthesis returned empty response" }
             return "I was unable to synthesize a response from the plan step results."
         }
         return text
+    }
+
+    /**
+     * Appends a user message to the message list, merging with the previous message
+     * if it is also a UserMessage. This is a defensive measure to satisfy LLM APIs
+     * that reject consecutive messages with the same role.
+     */
+    private fun appendUserMessage(messages: MutableList<ChatMessage>, text: String) {
+        val lastMsg = messages.lastOrNull()
+        if (lastMsg is UserMessage) {
+            log.warn { "Merging consecutive user messages — this may indicate a conversation history issue" }
+            messages[messages.lastIndex] = UserMessage.from(lastMsg.singleText() + "\n" + text)
+        } else {
+            messages.add(UserMessage.from(text))
+        }
+    }
+
+    /**
+     * Appends an assistant message to the message list, merging with the previous message
+     * if it is also an AiMessage. Same defensive measure as [appendUserMessage].
+     */
+    private fun appendAssistantMessage(messages: MutableList<ChatMessage>, text: String) {
+        val lastMsg = messages.lastOrNull()
+        if (lastMsg is AiMessage) {
+            log.warn { "Merging consecutive assistant messages — this may indicate a conversation history issue" }
+            messages[messages.lastIndex] = AiMessage.from(lastMsg.text() + "\n" + text)
+        } else {
+            messages.add(AiMessage.from(text))
+        }
     }
 
     /**
@@ -320,6 +351,10 @@ class DynamicAgentService(
         }
     }
 
+    /**
+     * Throws [TimeoutException] if the elapsed time since [startTime]
+     * exceeds the configured [timeoutMillis] limit.
+     */
     private fun checkTimeout(startTime: Long, timeoutMillis: Long) {
         if (System.currentTimeMillis() - startTime > timeoutMillis) {
             throw TimeoutException("Agent loop exceeded timeout of ${agentProperties.toolExecutionTimeoutSeconds} seconds")
