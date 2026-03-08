@@ -6,12 +6,14 @@ import dev.langchain4j.model.embedding.EmbeddingModel
 import dev.langchain4j.store.embedding.EmbeddingStore
 import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder.metadataKey
 import io.robothouse.agent.entity.Skill
+import io.robothouse.agent.exception.BadRequestException
 import io.robothouse.agent.exception.NotFoundException
 import io.robothouse.agent.model.SkillRequest
 import io.robothouse.agent.model.UpdateSkillRequest
 import io.robothouse.agent.repository.SkillRepository
 import io.robothouse.agent.util.log
 import org.springframework.stereotype.Service
+import org.springframework.transaction.support.TransactionTemplate
 import java.util.UUID
 
 /**
@@ -24,7 +26,8 @@ import java.util.UUID
 class SkillService(
     private val skillRepository: SkillRepository,
     private val embeddingModel: EmbeddingModel,
-    private val embeddingStore: EmbeddingStore<TextSegment>
+    private val embeddingStore: EmbeddingStore<TextSegment>,
+    private val transactionTemplate: TransactionTemplate
 ) {
 
     /**
@@ -52,15 +55,22 @@ class SkillService(
     fun create(request: SkillRequest): Skill {
         log.debug { "Processing create request for skill: name=${request.name}" }
 
-        val skill = Skill(
-            name = request.name,
-            description = request.description,
-            systemPrompt = request.systemPrompt,
-            toolNames = request.toolNames,
-            planningPrompt = request.planningPrompt
-        )
-        val saved = skillRepository.save(skill)
-        embedSkill(saved)
+        val saved = transactionTemplate.execute {
+            if (skillRepository.findByName(request.name) != null) {
+                throw BadRequestException("A skill with name '${request.name}' already exists")
+            }
+
+            val skill = Skill(
+                name = request.name,
+                description = request.description,
+                systemPrompt = request.systemPrompt,
+                toolNames = request.toolNames,
+                planningPrompt = request.planningPrompt
+            )
+            val persisted = skillRepository.save(skill)
+            embedSkill(persisted)
+            persisted
+        }!!
 
         log.info { "Created skill: id=${saved.id}, name=${saved.name}" }
         return saved
@@ -74,18 +84,22 @@ class SkillService(
     fun update(id: UUID, request: UpdateSkillRequest): Skill {
         log.debug { "Processing update request for skill: id=$id" }
 
-        // Step 1: Execute partial update
-        val saved = skillRepository.patchUpdate(id, request)
-            ?: run {
-                log.warn { "Attempt to update non-existent skill: id=$id" }
-                throw NotFoundException("Skill not found")
+        val saved = transactionTemplate.execute {
+            // Step 1: Execute partial update
+            val persisted = skillRepository.patchUpdate(id, request)
+                ?: run {
+                    log.warn { "Attempt to update non-existent skill: id=$id" }
+                    throw NotFoundException("Skill not found")
+                }
+
+            // Step 2: Update embedding if description changed
+            request.description?.let {
+                removeEmbeddingsBySkillId(persisted.id.toString())
+                embedSkill(persisted)
             }
 
-        // Step 2: Update embedding if description changed
-        request.description?.let {
-            removeEmbeddingsBySkillId(saved.id.toString())
-            embedSkill(saved)
-        }
+            persisted
+        }!!
 
         log.info { "Updated skill: id=${saved.id}, name=${saved.name}" }
         return saved
@@ -97,13 +111,16 @@ class SkillService(
     fun delete(id: UUID) {
         log.debug { "Processing delete request for skill: id=$id" }
 
-        if (!skillRepository.existsById(id)) {
-            log.warn { "Attempt to delete non-existent skill: id=$id" }
-            throw NotFoundException("Skill not found")
+        transactionTemplate.execute {
+            if (!skillRepository.existsById(id)) {
+                log.warn { "Attempt to delete non-existent skill: id=$id" }
+                throw NotFoundException("Skill not found")
+            }
+
+            removeEmbeddingsBySkillId(id.toString())
+            skillRepository.deleteById(id)
         }
 
-        removeEmbeddingsBySkillId(id.toString())
-        skillRepository.deleteById(id)
         log.info { "Deleted skill: id=$id" }
     }
 
