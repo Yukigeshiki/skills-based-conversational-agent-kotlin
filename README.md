@@ -1,49 +1,60 @@
 # Skills-Based Conversational Agent
 
-A skills-based agentic system built with Kotlin and Spring Boot. User messages are routed to programmable skills via semantic similarity, then executed through a tool-use agent loop powered by Claude. Real-time observability via SSE streaming.
+An agentic chat system built with Kotlin and Spring Boot. User messages are routed to skills via semantic similarity, then executed through a tool-use loop powered by Claude. The UI streams events in real time via SSE.
 
 ## How It Works
 
-```
-User message
-  -> Embed with AllMiniLmL6V2 (local ONNX, 384 dims)
-  -> Similarity search against skill descriptions in pgvector
-  -> Best-matching skill provides: system prompt, tools, optional planning prompt
-  -> Agent loop: Claude reasons, calls tools, observes results, repeats until done
-  -> SSE stream emits typed events throughout (skill matched, tool calls, thoughts, etc.)
-```
+1. User message is embedded locally (AllMiniLmL6V2, 384-dim ONNX)
+2. Similarity search in pgvector finds the best-matching skill
+3. The skill provides a system prompt, tool list, and optional planning prompt
+4. Agent loop: Claude reasons, calls tools, observes results, repeats until done
+5. SSE events stream back throughout (skill matched, thoughts, tool calls, response)
 
-Skills with a `planningPrompt` trigger multistep task decomposition — the agent breaks the request into steps, executes each with its own tool-use loop, then synthesizes results.
-
-## Tech Stack
-
-**Backend** (`services/agent/`) — Kotlin 2.1.20, Java 21, Spring Boot 3.5.7, LangChain4j (Claude Sonnet 4.6), PostgreSQL 17 + pgvector, Flyway, Gradle 8.14.1
-
-**Frontend** (`ui/`) — Vue 3, TypeScript, Vite, Tailwind CSS, Pinia, Radix/Reka UI primitives
+Skills with a `planningPrompt` trigger multistep decomposition — the agent breaks the request into steps, executes each, then synthesizes results.
 
 ## Prerequisites
 
-- Java 21+
-- Docker (PostgreSQL with pgvector)
-- Node.js + pnpm (for UI)
+- [SDKMAN!](https://sdkman.io/) (for Java)
+- Docker
+- Node.js + pnpm
 - `ANTHROPIC_API_KEY` environment variable
 
 ## Getting Started
 
+### Agent service
+
 ```bash
-# Start PostgreSQL with pgvector
-cd services/agent && docker compose up -d
+cd services/agent
+
+# Install Java 21 via SDKMAN
+sdk env install
+
+# Start PostgreSQL (pgvector) and Redis
+docker compose up -d
 
 # Run the backend (port 9090)
 ./gradlew bootRun
-
-# Run the UI (port 5174)
-cd ui && pnpm install && pnpm dev
 ```
 
-Two skills are seeded on first startup: `datetime-assistant` and `general-assistant`.
+A `general-assistant` skill is seeded on first startup.
+
+### UI
+
+```bash
+cd ui
+pnpm install
+pnpm dev  # port 5174
+```
+
+The UI provides a chat interface and a skills management page for creating, updating, and deleting skills.
+
+## Tools
+
+A `DateTimeTool` is included for timezone-aware date/time queries. To add more tools, create a Spring `@Component` with methods annotated with LangChain4j's `@Tool`, then reference the class name in a skill's `toolNames`.
 
 ## API
+
+Swagger UI: http://localhost:9090/swagger-ui.html
 
 ### Chat (SSE)
 
@@ -53,8 +64,6 @@ curl -N -X POST http://localhost:9090/api/chat \
   -d '{"message": "What time is it in Tokyo?"}'
 ```
 
-Streams events: `skill_matched`, `plan_created`, `iteration_started`, `thought`, `tool_call_started`, `tool_call_completed`, `final_response`, etc.
-
 ### Skills CRUD
 
 ```bash
@@ -62,42 +71,31 @@ curl http://localhost:9090/api/skills                    # List
 curl -X POST http://localhost:9090/api/skills \          # Create
   -H 'Content-Type: application/json' \
   -d '{"name": "my-skill", "description": "...", "systemPrompt": "...", "toolNames": ["DateTimeTool"]}'
-curl -X PATCH http://localhost:9090/api/skills/{id} ...  # Partial update
+curl -X PATCH http://localhost:9090/api/skills/{id} ...  # Update
 curl -X DELETE http://localhost:9090/api/skills/{id}     # Delete
 ```
-
-- Swagger UI: `http://localhost:9090/swagger-ui.html`
-- Health: `http://localhost:9090/actuator/health`
 
 ## Project Structure
 
 ```
-services/agent/app/src/main/kotlin/io/robothouse/agent/
-  config/        # Spring config, embedding, agent/routing properties
-  controller/    # ChatController (SSE), SkillController (CRUD)
-  service/       # DynamicAgentService, SkillRouterService, StreamingChatService, TaskPlanningService
-  model/         # Entities, DTOs, AgentEvent (sealed class), TaskMemory
-  repository/    # SkillRepository (JPA), ToolRepository (bean scanner)
-  tool/          # Tool implementations (DateTimeTool)
-  util/          # SkillSeeder, logging
-
-ui/src/
-  views/         # ChatView, SkillsView
-  components/    # Skills table with CRUD dialogs, Shadcn-style primitives
-  composables/   # Table logic, skill CRUD, filters, view modes
-  services/      # Axios client, SSE helper, SkillService
+services/agent/   Kotlin, Spring Boot 3.5.7, LangChain4j, Gradle
+ui/               Vue 3, TypeScript, Vite, Tailwind CSS
 ```
 
 ## Build Commands
 
-Backend (from `services/agent/`):
+**Agent service** (from `services/agent/`):
 
-- `./gradlew build` — build
-- `./gradlew test` — run tests
-- `./gradlew bootRun` — run
+```bash
+./gradlew build     # build
+./gradlew test      # test
+./gradlew bootRun   # run
+```
 
-Frontend (from `ui/`):
+**UI** (from `ui/`):
 
-- `pnpm dev` — dev server
-- `pnpm build` — production build
-- `pnpm lint` — lint
+```bash
+pnpm dev       # dev server
+pnpm build     # production build
+pnpm lint      # lint
+```
