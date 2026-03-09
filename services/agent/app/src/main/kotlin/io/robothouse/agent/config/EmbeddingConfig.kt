@@ -1,8 +1,9 @@
 package io.robothouse.agent.config
 
 import dev.langchain4j.model.embedding.EmbeddingModel
-import dev.langchain4j.model.embedding.onnx.allminilml6v2.AllMiniLmL6V2EmbeddingModel
+import dev.langchain4j.model.openai.OpenAiEmbeddingModel
 import dev.langchain4j.store.embedding.pgvector.PgVectorEmbeddingStore
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
@@ -18,12 +19,16 @@ import javax.sql.DataSource
 class EmbeddingConfig {
 
     companion object {
-        const val EMBEDDING_DIMENSION = 384
+        const val EMBEDDING_DIMENSION = 1536
         const val EMBEDDING_TABLE = "skill_embeddings"
     }
 
     @Bean
-    fun embeddingModel(): EmbeddingModel = AllMiniLmL6V2EmbeddingModel()
+    fun embeddingModel(@Value("\${openai.api-key}") apiKey: String): EmbeddingModel =
+        OpenAiEmbeddingModel.builder()
+            .apiKey(apiKey)
+            .modelName("text-embedding-3-small")
+            .build()
 
     @Bean
     @ConditionalOnProperty(name = ["spring.datasource.driver-class-name"], havingValue = "org.postgresql.Driver")

@@ -23,7 +23,7 @@
           label="Tool Names"
         />
         <div class="space-y-2">
-          <Label for="skill-description">Description</Label>
+          <Label for="skill-description">Description (include query examples for better matching)</Label>
           <Textarea
             id="skill-description"
             v-model="form.description"
@@ -34,7 +34,7 @@
         </div>
         <div class="space-y-2">
           <div class="flex items-center justify-between">
-            <Label for="skill-system-prompt">System Prompt</Label>
+            <Label for="skill-system-prompt">System Prompt (should be between 500-1000 tokens for best results)</Label>
             <PreviewToggleButton :previewing="systemPromptPreview" @toggle="systemPromptPreview = !systemPromptPreview" />
           </div>
           <Textarea
@@ -48,7 +48,7 @@
         </div>
         <div class="space-y-2">
           <div class="flex items-center justify-between">
-            <Label for="skill-planning-prompt">Planning Prompt (optional)</Label>
+            <Label for="skill-planning-prompt">Planning Prompt (optional, should be between 100-500 tokens for best results)</Label>
             <PreviewToggleButton :previewing="planningPromptPreview" @toggle="planningPromptPreview = !planningPromptPreview" />
           </div>
           <Textarea

@@ -8,7 +8,7 @@ A conversational agent built with Kotlin and Spring Boot. User messages are rout
 
 ## How It Works
 
-1. User message is embedded locally (AllMiniLmL6V2, 384-dim ONNX)
+1. User message is embedded via OpenAI text-embedding-3-small (1536-dim)
 2. Similarity search in pgvector finds the best-matching skill
 3. The skill provides a system prompt, tool list, and optional planning prompt
 4. Agent loop: Claude reasons, calls tools, observes results, repeats until done
@@ -20,6 +20,7 @@ A conversational agent built with Kotlin and Spring Boot. User messages are rout
 - Docker
 - Node.js + pnpm
 - `ANTHROPIC_API_KEY` environment variable
+- `OPENAI_API_KEY` environment variable
 
 ## Getting Started
 

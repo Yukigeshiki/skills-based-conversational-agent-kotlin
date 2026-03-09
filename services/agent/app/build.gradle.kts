@@ -37,7 +37,7 @@ dependencies {
     implementation(libs.langchain4j.spring.boot.starter)
     implementation(libs.langchain4j.anthropic.spring.boot.starter)
     implementation(libs.langchain4j.pgvector)
-    implementation(libs.langchain4j.embeddings.all.minilm.l6.v2)
+    implementation(libs.langchain4j.open.ai.spring.boot.starter)
 
     // Tokenizer
     implementation(libs.jtokkit)
@@ -60,6 +60,7 @@ dependencies {
     testImplementation(libs.spring.boot.testcontainers)
     testImplementation(libs.testcontainers.junit.jupiter)
     testImplementation(libs.testcontainers.postgresql)
+    testImplementation(libs.langchain4j.embeddings.all.minilm.l6.v2)
     testRuntimeOnly(libs.junit.platform.launcher)
     testRuntimeOnly(libs.h2.database)
 }

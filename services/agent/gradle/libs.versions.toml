@@ -23,6 +23,7 @@ langchain4j-spring-boot-starter = { group = "dev.langchain4j", name = "langchain
 langchain4j-anthropic-spring-boot-starter = { group = "dev.langchain4j", name = "langchain4j-anthropic-spring-boot-starter", version.ref = "langchain4j" }
 langchain4j-pgvector = { group = "dev.langchain4j", name = "langchain4j-pgvector", version.ref = "langchain4j" }
 langchain4j-embeddings-all-minilm-l6-v2 = { group = "dev.langchain4j", name = "langchain4j-embeddings-all-minilm-l6-v2", version.ref = "langchain4j" }
+langchain4j-open-ai-spring-boot-starter = { group = "dev.langchain4j", name = "langchain4j-open-ai-spring-boot-starter", version.ref = "langchain4j" }
 
 spring-boot-starter-data-redis = { group = "org.springframework.boot", name = "spring-boot-starter-data-redis" }
 spring-boot-starter-data-jpa = { group = "org.springframework.boot", name = "spring-boot-starter-data-jpa" }

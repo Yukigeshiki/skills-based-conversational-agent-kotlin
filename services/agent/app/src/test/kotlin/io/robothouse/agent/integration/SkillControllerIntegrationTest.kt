@@ -22,7 +22,7 @@ import org.testcontainers.junit.jupiter.Testcontainers
 @AutoConfigureMockMvc
 @Testcontainers
 @ActiveProfiles("integration")
-@Import(PostgresContainerConfig::class, RedisContainerConfig::class)
+@Import(PostgresContainerConfig::class, RedisContainerConfig::class, TestEmbeddingConfig::class)
 class SkillControllerIntegrationTest {
 
     @Autowired
