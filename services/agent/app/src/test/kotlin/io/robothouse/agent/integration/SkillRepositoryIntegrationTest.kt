@@ -90,7 +90,7 @@ class SkillRepositoryIntegrationTest {
 
         val updated = skillRepository.patchUpdate(
             skill.id!!,
-            UpdateSkillRequest(description = "Updated description")
+            UpdateSkillRequest(description = "Updated description", toolNames = listOf("DateTimeTool"))
         )
 
         assertNotNull(updated)

@@ -3,7 +3,9 @@ package io.robothouse.agent.service
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.robothouse.agent.config.AgentProperties
 import io.robothouse.agent.listener.AgentEventListener
+import io.robothouse.agent.entity.Skill
 import io.robothouse.agent.model.AgentEvent
+import io.robothouse.agent.model.AgentResponse
 import io.robothouse.agent.model.ConversationMessage
 import io.robothouse.agent.util.log
 import org.springframework.stereotype.Service
@@ -27,6 +29,7 @@ class StreamingChatService(
     private val skillRouterService: SkillRouterService,
     private val dynamicAgentService: DynamicAgentService,
     private val conversationMemoryService: ConversationMemoryService,
+    private val responseValidationService: ResponseValidationService,
     private val agentProperties: AgentProperties,
     private val objectMapper: ObjectMapper
 ) {
@@ -83,7 +86,11 @@ class StreamingChatService(
                 val skill = skillRouterService.route(userMessage, history)
                 listener.onEvent(AgentEvent.SkillMatchedEvent(skillName = skill.name))
 
-                val response = dynamicAgentService.chat(skill, userMessage, listener, history)
+                val response = if (skill.name == SkillRouterService.FALLBACK_SKILL_NAME) {
+                    dynamicAgentService.chat(skill, userMessage, listener, history)
+                } else {
+                    executeWithValidation(skill, userMessage, listener, history)
+                }
 
                 try {
                     conversationMemoryService.addMessage(
@@ -113,5 +120,40 @@ class StreamingChatService(
         }
 
         return emitter
+    }
+
+    /**
+     * Runs a specialist skill with a listener that withholds the [AgentEvent.FinalResponseEvent].
+     * After execution, validates the response. If adequate, emits the held-back final response.
+     * If inadequate, emits a [AgentEvent.SkillReroutedEvent] and reruns via the fallback skill.
+     */
+    private fun executeWithValidation(
+        skill: Skill,
+        userMessage: String,
+        listener: AgentEventListener,
+        history: List<ConversationMessage>
+    ): AgentResponse {
+        var heldFinalResponse: AgentEvent.FinalResponseEvent? = null
+
+        val gatedListener = AgentEventListener { event ->
+            if (event is AgentEvent.FinalResponseEvent) {
+                heldFinalResponse = event
+            } else {
+                listener.onEvent(event)
+            }
+        }
+
+        val response = dynamicAgentService.chat(skill, userMessage, gatedListener, history)
+
+        if (responseValidationService.isAdequate(userMessage, response.response)) {
+            heldFinalResponse?.let { listener.onEvent(it) }
+            return response
+        }
+
+        log.info { "Rerouting from ${skill.name} to ${SkillRouterService.FALLBACK_SKILL_NAME}" }
+        listener.onEvent(AgentEvent.SkillReroutedEvent(fromSkill = skill.name, toSkill = SkillRouterService.FALLBACK_SKILL_NAME))
+        listener.onEvent(AgentEvent.SkillMatchedEvent(skillName = SkillRouterService.FALLBACK_SKILL_NAME))
+        val fallbackSkill = skillRouterService.findFallbackSkill()
+        return dynamicAgentService.chat(fallbackSkill, userMessage, listener, history)
     }
 }

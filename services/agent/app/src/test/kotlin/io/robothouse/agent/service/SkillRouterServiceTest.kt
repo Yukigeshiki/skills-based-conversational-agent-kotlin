@@ -128,7 +128,7 @@ class SkillRouterServiceTest {
 
         assertEquals("datetime-assistant", result.name)
         verify(embeddingModel).embed("yes")
-        verify(embeddingModel).embed(argThat<String> { contains("What time is it in Tokyo?") && endsWith("\nyes") })
+        verify(embeddingModel).embed(argThat<String> { contains("Previous message: What time is it in Tokyo?") && endsWith("\nCurrent message: yes") })
     }
 
     @Test
@@ -190,7 +190,7 @@ class SkillRouterServiceTest {
         limitedRouterService.route("yes", history)
 
         verify(embeddingModel).embed(argThat<String> {
-            !contains("First message") && contains("What time is it in Tokyo?") && endsWith("\nyes")
+            !contains("First message") && contains("Previous message: What time is it in Tokyo?") && endsWith("\nCurrent message: yes")
         })
     }
 
@@ -212,7 +212,7 @@ class SkillRouterServiceTest {
         routerService.route("yes", history)
 
         verify(embeddingModel).embed(argThat<String> {
-            !contains("It is 3:00 PM") && contains("What time is it in Tokyo?") && endsWith("\nyes")
+            !contains("It is 3:00 PM") && contains("Previous message: What time is it in Tokyo?") && endsWith("\nCurrent message: yes")
         })
     }
 }

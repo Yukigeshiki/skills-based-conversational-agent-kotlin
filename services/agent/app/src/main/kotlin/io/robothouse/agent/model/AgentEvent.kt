@@ -24,6 +24,7 @@ import java.time.Instant
     JsonSubTypes.Type(value = AgentEvent.ToolCallStartedEvent::class, name = "tool_call_started"),
     JsonSubTypes.Type(value = AgentEvent.ToolCallCompletedEvent::class, name = "tool_call_completed"),
     JsonSubTypes.Type(value = AgentEvent.FinalResponseEvent::class, name = "final_response"),
+    JsonSubTypes.Type(value = AgentEvent.SkillReroutedEvent::class, name = "skill_rerouted"),
     JsonSubTypes.Type(value = AgentEvent.WarningEvent::class, name = "warning"),
     JsonSubTypes.Type(value = AgentEvent.ErrorEvent::class, name = "error")
 )
@@ -150,6 +151,19 @@ sealed class AgentEvent {
         override val timestamp: Instant = Instant.now()
     ) : AgentEvent() {
         override val type: String = "final_response"
+    }
+
+    /**
+     * Emitted when a specialist skill's response is deemed inadequate and the
+     * request is rerouted to the fallback skill for a second attempt.
+     */
+    data class SkillReroutedEvent(
+        val fromSkill: String,
+        val toSkill: String,
+        val reason: String = "Response did not adequately answer the question",
+        override val timestamp: Instant = Instant.now()
+    ) : AgentEvent() {
+        override val type: String = "skill_rerouted"
     }
 
     /**

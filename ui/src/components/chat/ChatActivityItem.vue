@@ -9,6 +9,16 @@
         </span>
       </template>
 
+      <template v-else-if="event.type === 'skill_rerouted'">
+        <span class="text-yellow-600 dark:text-yellow-400">
+          Rerouted from
+          <span class="font-medium">{{ event.fromSkill }}</span>
+          to
+          <span class="rounded bg-accent px-1.5 py-0.5 font-medium text-accent-foreground">{{ event.toSkill }}</span>
+          — {{ event.reason }}
+        </span>
+      </template>
+
       <template v-else-if="event.type === 'plan_created'">
         <div>
           <span class="italic">{{ event.plan.reasoning }}</span>
@@ -71,6 +81,7 @@ import {
   RotateCw,
   Brain,
   Wrench,
+  GitBranch,
 } from 'lucide-vue-next'
 import type { ChatEvent } from '@/types/chat'
 
@@ -79,6 +90,7 @@ const props = defineProps<{ event: ChatEvent }>()
 /** Maps event types to their corresponding Lucide icon components. */
 const iconMap = {
   skill_matched: Zap,
+  skill_rerouted: GitBranch,
   plan_created: List,
   plan_step_started: Circle,
   plan_step_completed: CheckCircle,

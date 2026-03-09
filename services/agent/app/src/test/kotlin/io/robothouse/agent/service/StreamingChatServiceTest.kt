@@ -30,6 +30,7 @@ class StreamingChatServiceTest {
     private val skillRouterService: SkillRouterService = mock()
     private val dynamicAgentService: DynamicAgentService = mock()
     private val conversationMemoryService: ConversationMemoryService = mock()
+    private val responseValidationService: ResponseValidationService = mock()
     private val agentProperties = AgentProperties(maxToolExecutions = 10, toolExecutionTimeoutSeconds = 30, maxPlanSteps = 10)
     private val objectMapper: ObjectMapper = jacksonObjectMapper().registerModule(JavaTimeModule())
 
@@ -44,10 +45,12 @@ class StreamingChatServiceTest {
 
     @BeforeEach
     fun setUp() {
+        whenever(responseValidationService.isAdequate(any(), any())).thenReturn(true)
         service = StreamingChatService(
             skillRouterService,
             dynamicAgentService,
             conversationMemoryService,
+            responseValidationService,
             agentProperties,
             objectMapper
         )
@@ -254,6 +257,61 @@ class StreamingChatServiceTest {
         latch.await(5, TimeUnit.SECONDS)
 
         verify(skillRouterService).route(eq("yes"), eq(history))
+    }
+
+    @Test
+    fun `reroutes to fallback when specialist response is inadequate`() {
+        val latch = CountDownLatch(1)
+        val fallbackSkill = Skill(
+            name = "general-assistant",
+            description = "general",
+            systemPrompt = "You are a general assistant.",
+            toolNames = emptyList()
+        )
+
+        whenever(skillRouterService.route(any(), any())).thenReturn(skill)
+        whenever(skillRouterService.findFallbackSkill()).thenReturn(fallbackSkill)
+        whenever(conversationMemoryService.getHistory(any())).thenReturn(emptyList())
+        whenever(responseValidationService.isAdequate(any(), any())).thenReturn(false)
+        whenever(dynamicAgentService.chat(eq(skill), any(), any(), any())).thenReturn(
+            AgentResponse(response = "I can't help with that")
+        )
+        whenever(dynamicAgentService.chat(eq(fallbackSkill), any(), any(), any())).thenReturn(
+            AgentResponse(response = "Here's the answer!")
+        )
+
+        val emitter = service.streamChat("What is 2+2?", null)
+        emitter.onCompletion { latch.countDown() }
+
+        latch.await(5, TimeUnit.SECONDS)
+
+        verify(dynamicAgentService).chat(eq(skill), any(), any(), any())
+        verify(dynamicAgentService).chat(eq(fallbackSkill), any(), any(), any())
+        verify(skillRouterService).findFallbackSkill()
+    }
+
+    @Test
+    fun `skips validation when skill is already fallback`() {
+        val latch = CountDownLatch(1)
+        val fallbackSkill = Skill(
+            name = "general-assistant",
+            description = "general",
+            systemPrompt = "You are a general assistant.",
+            toolNames = emptyList()
+        )
+
+        whenever(skillRouterService.route(any(), any())).thenReturn(fallbackSkill)
+        whenever(conversationMemoryService.getHistory(any())).thenReturn(emptyList())
+        whenever(dynamicAgentService.chat(any(), any(), any(), any())).thenReturn(
+            AgentResponse(response = "Hello!")
+        )
+
+        val emitter = service.streamChat("Hi", null)
+        emitter.onCompletion { latch.countDown() }
+
+        latch.await(5, TimeUnit.SECONDS)
+
+        verify(responseValidationService, never()).isAdequate(any(), any())
     }
 
     @Test

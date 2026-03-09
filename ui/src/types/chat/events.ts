@@ -88,6 +88,14 @@ export interface FinalResponseEvent {
   timestamp: string
 }
 
+export interface SkillReroutedEvent {
+  type: 'skill_rerouted'
+  fromSkill: string
+  toSkill: string
+  reason: string
+  timestamp: string
+}
+
 export interface WarningEvent {
   type: 'warning'
   message: string
@@ -111,5 +119,6 @@ export type ChatEvent =
   | ToolCallStartedEvent
   | ToolCallCompletedEvent
   | FinalResponseEvent
+  | SkillReroutedEvent
   | WarningEvent
   | ErrorEvent

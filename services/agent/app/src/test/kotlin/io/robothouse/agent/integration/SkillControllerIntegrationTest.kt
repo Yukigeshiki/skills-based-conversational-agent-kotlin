@@ -296,7 +296,12 @@ class SkillControllerIntegrationTest {
             Skill(name = "patch-skill", description = "Original", systemPrompt = "P", toolNames = listOf("DateTimeTool"))
         )
 
-        val update = mapOf("description" to "Updated description")
+        val update = mapOf(
+            "name" to "patch-skill",
+            "description" to "Updated description",
+            "systemPrompt" to "P",
+            "toolNames" to listOf("DateTimeTool")
+        )
 
         mockMvc.patch("/api/skills/${saved.id}") {
             contentType = MediaType.APPLICATION_JSON

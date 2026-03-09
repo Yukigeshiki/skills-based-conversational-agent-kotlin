@@ -60,14 +60,22 @@ class SkillRouterService(
 
         if (shouldRetryWithContext) {
             val contextualQuery = buildContextualQuery(userMessage, conversationHistory)
-            log.debug { "Pass 2 — fallback score ${directMatch!!.score} below threshold ${properties.contextRetryThreshold}, retrying with context:\n$contextualQuery" }
+            log.debug { "Pass 2 — fallback score ${directMatch.score} below threshold ${properties.contextRetryThreshold}, retrying with context:\n$contextualQuery" }
             val contextMatch = findTopSkill(contextualQuery)
             if (contextMatch != null) return contextMatch.skill
         }
 
         if (directMatch != null) return directMatch.skill
 
-        log.info { "No embedding matches found, falling back to: ${FALLBACK_SKILL_NAME}" }
+        log.info { "No embedding matches found, falling back to: $FALLBACK_SKILL_NAME" }
+        return skillRepository.findByName(FALLBACK_SKILL_NAME)
+            ?: run {
+                log.warn { "Fallback skill not found: name=${FALLBACK_SKILL_NAME}" }
+                throw NotFoundException("Fallback skill not found")
+            }
+    }
+
+    fun findFallbackSkill(): Skill {
         return skillRepository.findByName(FALLBACK_SKILL_NAME)
             ?: run {
                 log.warn { "Fallback skill not found: name=${FALLBACK_SKILL_NAME}" }
@@ -115,7 +123,7 @@ class SkillRouterService(
 
         if (recentUserMessages.isEmpty()) return userMessage
 
-        val historyLines = recentUserMessages.joinToString("\n") { it.content }
-        return "$historyLines\n$userMessage"
+        val historyLines = recentUserMessages.joinToString("\n") { "Previous message: ${it.content}" }
+        return "Follow-up in an ongoing conversation.\n$historyLines\nCurrent message: $userMessage"
     }
 }
