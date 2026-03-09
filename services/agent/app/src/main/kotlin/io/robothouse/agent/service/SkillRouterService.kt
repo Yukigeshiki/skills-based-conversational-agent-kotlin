@@ -63,11 +63,13 @@ class SkillRouterService(
             && directMatch.skill.name == FALLBACK_SKILL_NAME
             && directMatch.score < properties.contextRetryThreshold
             && conversationHistory.isNotEmpty()
-            && properties.contextMessageCount > 0
 
         if (shouldRetryWithContext) {
             val contextualQuery = buildContextualQuery(userMessage, conversationHistory)
-            log.debug { "Pass 2 — fallback score ${directMatch.score} below threshold ${properties.contextRetryThreshold}, retrying with context:\n$contextualQuery" }
+            log.debug {
+                "Pass 2 — fallback score ${directMatch.score} below threshold " +
+                    "${properties.contextRetryThreshold}, retrying with context:\n$contextualQuery"
+            }
             val contextMatch = findTopSkill(contextualQuery)
             if (contextMatch != null) return contextMatch.skill
         }
@@ -146,19 +148,16 @@ class SkillRouterService(
     }
 
     /**
-     * Prepends recent user messages from [conversationHistory] to [userMessage]
+     * Prepends the last assistant message from [conversationHistory] to [userMessage]
      * for context-aware embedding search.
      */
     private fun buildContextualQuery(userMessage: String, conversationHistory: List<ConversationMessage>): String {
-        if (conversationHistory.isEmpty() || properties.contextMessageCount == 0) return userMessage
+        val lastAssistantMessage = conversationHistory
+            .lastOrNull { it.role == "assistant" }
+            ?: return userMessage
 
-        val recentUserMessages = conversationHistory
-            .filter { it.role == "user" }
-            .takeLast(properties.contextMessageCount)
-
-        if (recentUserMessages.isEmpty()) return userMessage
-
-        val historyLines = recentUserMessages.joinToString("\n") { "Previous message: ${it.content}" }
-        return "Follow-up in an ongoing conversation.\n$historyLines\nCurrent message: $userMessage"
+        return "Follow-up in an ongoing conversation.\n" +
+            "Previous assistant response: ${lastAssistantMessage.content}\n" +
+            "Current message: $userMessage"
     }
 }

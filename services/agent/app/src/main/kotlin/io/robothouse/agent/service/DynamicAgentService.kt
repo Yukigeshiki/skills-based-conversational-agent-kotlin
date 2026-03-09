@@ -50,7 +50,12 @@ class DynamicAgentService(
      * Decomposes the request into a multistep plan and executes each step sequentially.
      * Single-step plans skip per-step overhead and execute directly.
      */
-    fun chat(skill: Skill, userMessage: String, listener: AgentEventListener = AgentEventListener.NOOP, conversationHistory: List<ConversationMessage> = emptyList()): AgentResponse {
+    fun chat(
+        skill: Skill,
+        userMessage: String,
+        listener: AgentEventListener = AgentEventListener.NOOP,
+        conversationHistory: List<ConversationMessage> = emptyList()
+    ): AgentResponse {
         log.debug { "Processing chat request for skill: name=${skill.name}, tools=${skill.toolNames}" }
 
         val specifications = toolRepository.getSpecificationsByNames(skill.toolNames)
@@ -61,7 +66,15 @@ class DynamicAgentService(
         emitEvent(listener) { AgentEvent.PlanCreatedEvent(plan = plan) }
 
         if (plan.steps.size <= 1) {
-            val response = executeStep(skill.systemPrompt, userMessage, specifications, executors, skill.name, listener, conversationHistory = conversationHistory)
+            val response = executeStep(
+                skill.systemPrompt,
+                userMessage,
+                specifications,
+                executors,
+                skill.name,
+                listener,
+                conversationHistory = conversationHistory
+            )
             return response.copy(plan = plan)
         }
 
@@ -94,7 +107,13 @@ class DynamicAgentService(
                     iterations = stepResponse.iterations
                 )
                 stepResults.add(stepResult)
-                emitEvent(listener) { AgentEvent.PlanStepCompletedEvent(stepNumber = planStep.stepNumber, status = PlanStepStatus.COMPLETED, response = stepResponse.response) }
+                emitEvent(listener) {
+                    AgentEvent.PlanStepCompletedEvent(
+                        stepNumber = planStep.stepNumber,
+                        status = PlanStepStatus.COMPLETED,
+                        response = stepResponse.response
+                    )
+                }
             } catch (e: Exception) {
                 log.warn { "Plan step ${planStep.stepNumber} failed for skill: name=${skill.name}, error: ${e.message}" }
                 stepResults.add(
@@ -104,7 +123,13 @@ class DynamicAgentService(
                         response = e.message ?: "Step failed"
                     )
                 )
-                emitEvent(listener) { AgentEvent.PlanStepCompletedEvent(stepNumber = planStep.stepNumber, status = PlanStepStatus.FAILED, response = e.message ?: "Step failed") }
+                emitEvent(listener) {
+                    AgentEvent.PlanStepCompletedEvent(
+                        stepNumber = planStep.stepNumber,
+                        status = PlanStepStatus.FAILED,
+                        response = e.message ?: "Step failed"
+                    )
+                }
             }
         }
 
@@ -206,13 +231,23 @@ class DynamicAgentService(
 
             aiMessage.toolExecutionRequests().forEach { toolRequest ->
                 log.debug { "Executing tool: name=${toolRequest.name()}, args=${toolRequest.arguments()}" }
-                emitEvent(listener) { AgentEvent.ToolCallStartedEvent(iterationNumber = iteration, toolName = toolRequest.name(), arguments = toolRequest.arguments()) }
+                emitEvent(listener) {
+                    AgentEvent.ToolCallStartedEvent(
+                        iterationNumber = iteration,
+                        toolName = toolRequest.name(),
+                        arguments = toolRequest.arguments()
+                    )
+                }
 
                 val executor = executors[toolRequest.name()]
 
                 val (result, isError) = if (executor == null) {
                     log.warn { "No executor found for tool: ${toolRequest.name()}" }
-                    Pair("Error: No tool named '${toolRequest.name()}' is available. Available tools: ${executors.keys.joinToString(", ")}", true)
+                    Pair(
+                        "Error: No tool named '${toolRequest.name()}' is available. " +
+                            "Available tools: ${executors.keys.joinToString(", ")}",
+                        true
+                    )
                 } else {
                     try {
                         Pair(executor.execute(toolRequest, null), false)
@@ -222,7 +257,14 @@ class DynamicAgentService(
                     }
                 }
 
-                emitEvent(listener) { AgentEvent.ToolCallCompletedEvent(iterationNumber = iteration, toolName = toolRequest.name(), result = result, error = isError) }
+                emitEvent(listener) {
+                    AgentEvent.ToolCallCompletedEvent(
+                        iterationNumber = iteration,
+                        toolName = toolRequest.name(),
+                        result = result,
+                        error = isError
+                    )
+                }
 
                 steps.add(ToolExecutionStep(
                     toolName = toolRequest.name(),

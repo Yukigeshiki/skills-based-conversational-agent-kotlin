@@ -14,13 +14,18 @@ import java.time.format.DateTimeFormatter
 @Component
 class DateTimeTool {
 
-    @Tool("Returns the current date and time for a given timezone. The timezone parameter should be a valid IANA timezone ID such as 'America/New_York', 'Europe/London', or 'Asia/Tokyo'.")
+    @Tool(
+        "Returns the current date and time for a given timezone. " +
+        "The timezone parameter should be a valid IANA timezone ID " +
+        "such as 'America/New_York', 'Europe/London', or 'Asia/Tokyo'."
+    )
     fun getCurrentDateTime(timezone: String): String {
         log.debug { "Getting current date/time for timezone: $timezone" }
         val zoneId = try {
             ZoneId.of(timezone)
         } catch (_: DateTimeException) {
-            return "Invalid timezone: '$timezone'. Please use a valid IANA timezone ID such as 'America/New_York', 'Europe/London', or 'Asia/Tokyo'."
+            return "Invalid timezone: '$timezone'. Please use a valid IANA timezone ID " +
+                "such as 'America/New_York', 'Europe/London', or 'Asia/Tokyo'."
         }
         val now = ZonedDateTime.now(zoneId)
         val formatted = now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss z"))

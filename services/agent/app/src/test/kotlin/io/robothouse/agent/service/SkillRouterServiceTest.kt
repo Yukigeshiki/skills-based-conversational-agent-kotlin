@@ -170,7 +170,7 @@ class SkillRouterServiceTest {
 
         assertEquals("datetime-assistant", result.name)
         verify(embeddingModel).embed("yes")
-        verify(embeddingModel).embed(argThat<String> { contains("Previous message: What time is it in Tokyo?") && endsWith("\nCurrent message: yes") })
+        verify(embeddingModel).embed(argThat<String> { contains("Previous assistant response: It is 3:00 PM in Tokyo.") && endsWith("\nCurrent message: yes") })
     }
 
     @Test
@@ -211,36 +211,12 @@ class SkillRouterServiceTest {
     }
 
     @Test
-    fun `limits context to configured user message count`() {
-        val limitedProperties = SkillRoutingProperties(contextMessageCount = 1, contextRetryThreshold = 0.6)
-        val limitedRouterService = SkillRouterService(embeddingModel, embeddingStore, skillRepository, limitedProperties)
+    fun `context retry uses last assistant message only`() {
         val fallbackId = UUID.randomUUID()
         val fallbackSkill = Skill(id = fallbackId, name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
         val history = listOf(
-            ConversationMessage(role = "user", content = "First message"),
+            ConversationMessage(role = "user", content = "First question"),
             ConversationMessage(role = "assistant", content = "First response"),
-            ConversationMessage(role = "user", content = "What time is it in Tokyo?"),
-            ConversationMessage(role = "assistant", content = "It is 3:00 PM in Tokyo.")
-        )
-
-        whenever(embeddingModel.embed(any<String>())).thenReturn(Response(embedding))
-        val segment = TextSegment.from("general", Metadata.from("skillId", fallbackId.toString()))
-        val match = EmbeddingMatch(0.3, "1", embedding, segment)
-        whenever(embeddingStore.search(any<EmbeddingSearchRequest>())).thenReturn(EmbeddingSearchResult(listOf(match)))
-        whenever(skillRepository.findById(fallbackId)).thenReturn(Optional.of(fallbackSkill))
-
-        limitedRouterService.route("yes", history)
-
-        verify(embeddingModel).embed(argThat<String> {
-            !contains("First message") && contains("Previous message: What time is it in Tokyo?") && endsWith("\nCurrent message: yes")
-        })
-    }
-
-    @Test
-    fun `context only includes user messages not assistant messages`() {
-        val fallbackId = UUID.randomUUID()
-        val fallbackSkill = Skill(id = fallbackId, name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
-        val history = listOf(
             ConversationMessage(role = "user", content = "What time is it in Tokyo?"),
             ConversationMessage(role = "assistant", content = "It is 3:00 PM in Tokyo.")
         )
@@ -254,7 +230,10 @@ class SkillRouterServiceTest {
         routerService.route("yes", history)
 
         verify(embeddingModel).embed(argThat<String> {
-            !contains("It is 3:00 PM") && contains("Previous message: What time is it in Tokyo?") && endsWith("\nCurrent message: yes")
+            contains("Previous assistant response: It is 3:00 PM in Tokyo.")
+                && !contains("First response")
+                && !contains("First question")
+                && endsWith("\nCurrent message: yes")
         })
     }
 }
