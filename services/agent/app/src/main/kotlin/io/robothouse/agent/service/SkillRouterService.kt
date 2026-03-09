@@ -7,6 +7,7 @@ import dev.langchain4j.data.segment.TextSegment
 import io.robothouse.agent.config.SkillRoutingProperties
 import io.robothouse.agent.entity.Skill
 import io.robothouse.agent.exception.NotFoundException
+import io.robothouse.agent.model.ConversationMessage
 import io.robothouse.agent.repository.SkillRepository
 import io.robothouse.agent.util.log
 import org.springframework.stereotype.Service
@@ -15,8 +16,10 @@ import java.util.UUID
 /**
  * Routes user messages to the most relevant skill using embedding similarity search.
  *
- * Falls back to a configurable default skill when no match
- * exceeds the minimum similarity threshold.
+ * Always picks the highest-scoring skill. If that skill is the fallback and the
+ * score is below [SkillRoutingProperties.contextRetryThreshold], retries with
+ * recent user messages prepended so that terse follow-ups like "yes" inherit the
+ * conversation's semantic context.
  */
 @Service
 class SkillRouterService(
@@ -26,43 +29,93 @@ class SkillRouterService(
     private val properties: SkillRoutingProperties
 ) {
 
+    companion object {
+        const val FALLBACK_SKILL_NAME = "general-assistant"
+    }
+
+    private data class ScoredSkill(val skill: Skill, val score: Double)
+
     /**
      * Finds the best-matching skill for a user message using embedding similarity.
      *
-     * Returns the fallback skill if no match exceeds the minimum similarity threshold.
+     * Routes to the highest-scoring skill. If the best match is the fallback skill
+     * with a score below the context retry threshold and conversation history is
+     * available, retries with context from recent user messages.
      */
-    fun route(userMessage: String): Skill {
+    fun route(userMessage: String, conversationHistory: List<ConversationMessage> = emptyList()): Skill {
         log.debug { "Routing message to skill" }
 
-        val queryEmbedding = embeddingModel.embed(userMessage).content()
+        log.debug { "Pass 1 — direct match for query: \"$userMessage\"" }
+        val directMatch = findTopSkill(userMessage)
+
+        if (directMatch != null && directMatch.skill.name != FALLBACK_SKILL_NAME) {
+            return directMatch.skill
+        }
+
+        val shouldRetryWithContext = directMatch != null
+            && directMatch.skill.name == FALLBACK_SKILL_NAME
+            && directMatch.score < properties.contextRetryThreshold
+            && conversationHistory.isNotEmpty()
+            && properties.contextMessageCount > 0
+
+        if (shouldRetryWithContext) {
+            val contextualQuery = buildContextualQuery(userMessage, conversationHistory)
+            log.debug { "Pass 2 — fallback score ${directMatch!!.score} below threshold ${properties.contextRetryThreshold}, retrying with context:\n$contextualQuery" }
+            val contextMatch = findTopSkill(contextualQuery)
+            if (contextMatch != null) return contextMatch.skill
+        }
+
+        if (directMatch != null) return directMatch.skill
+
+        log.info { "No embedding matches found, falling back to: ${FALLBACK_SKILL_NAME}" }
+        return skillRepository.findByName(FALLBACK_SKILL_NAME)
+            ?: run {
+                log.warn { "Fallback skill not found: name=${FALLBACK_SKILL_NAME}" }
+                throw NotFoundException("Fallback skill not found")
+            }
+    }
+
+    private fun findTopSkill(query: String): ScoredSkill? {
+        val queryEmbedding = embeddingModel.embed(query).content()
 
         val searchRequest = EmbeddingSearchRequest.builder()
             .queryEmbedding(queryEmbedding)
             .maxResults(1)
-            .minScore(properties.minSimilarityScore)
             .build()
 
         val results = embeddingStore.search(searchRequest)
+        val topMatch = results.matches().firstOrNull()
 
-        val matchedSkill = results.matches().firstOrNull()
-            ?.let { match ->
-                val skillIdStr = match.embedded()?.metadata()?.getString("skillId") ?: return@let null
-                val skillId = runCatching { UUID.fromString(skillIdStr) }
-                    .onFailure { log.warn { "Invalid skillId in embedding metadata: $skillIdStr" } }
-                    .getOrNull() ?: return@let null
-                log.debug { "Matched skill ID: $skillId with score: ${match.score()}" }
-                skillRepository.findById(skillId).orElse(null)?.also { skill ->
-                    log.info { "Routed to skill: ${skill.name} (score: ${match.score()})" }
-                }
+        if (topMatch == null) {
+            log.debug { "No embedding matches found" }
+            return null
+        }
+
+        log.debug { "Top embedding match — score: ${topMatch.score()}, segment: \"${topMatch.embedded()?.text()}\"" }
+
+        val skill = topMatch.let { match ->
+            val skillIdStr = match.embedded()?.metadata()?.getString("skillId") ?: return@let null
+            val skillId = runCatching { UUID.fromString(skillIdStr) }
+                .onFailure { log.warn { "Invalid skillId in embedding metadata: $skillIdStr" } }
+                .getOrNull() ?: return@let null
+            skillRepository.findById(skillId).orElse(null)?.also { s ->
+                log.info { "Routed to skill: ${s.name} (score: ${match.score()})" }
             }
+        } ?: return null
 
-        if (matchedSkill != null) return matchedSkill
+        return ScoredSkill(skill, topMatch.score())
+    }
 
-        log.info { "No match above threshold, falling back to: ${properties.fallbackSkillName}" }
-        return skillRepository.findByName(properties.fallbackSkillName)
-            ?: run {
-                log.warn { "Fallback skill not found: name=${properties.fallbackSkillName}" }
-                throw NotFoundException("Fallback skill not found")
-            }
+    private fun buildContextualQuery(userMessage: String, conversationHistory: List<ConversationMessage>): String {
+        if (conversationHistory.isEmpty() || properties.contextMessageCount == 0) return userMessage
+
+        val recentUserMessages = conversationHistory
+            .filter { it.role == "user" }
+            .takeLast(properties.contextMessageCount)
+
+        if (recentUserMessages.isEmpty()) return userMessage
+
+        val historyLines = recentUserMessages.joinToString("\n") { it.content }
+        return "$historyLines\n$userMessage"
     }
 }

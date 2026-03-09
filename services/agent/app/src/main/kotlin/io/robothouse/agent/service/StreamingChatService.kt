@@ -80,7 +80,7 @@ class StreamingChatService(
                     emptyList()
                 }
 
-                val skill = skillRouterService.route(userMessage)
+                val skill = skillRouterService.route(userMessage, history)
                 listener.onEvent(AgentEvent.SkillMatchedEvent(skillName = skill.name))
 
                 val response = dynamicAgentService.chat(skill, userMessage, listener, history)

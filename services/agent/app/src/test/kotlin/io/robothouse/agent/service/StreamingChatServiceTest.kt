@@ -55,7 +55,7 @@ class StreamingChatServiceTest {
 
     @Test
     fun `returns SseEmitter with correct timeout`() {
-        whenever(skillRouterService.route(any())).thenReturn(skill)
+        whenever(skillRouterService.route(any(), any())).thenReturn(skill)
         whenever(conversationMemoryService.getHistory(any())).thenReturn(emptyList())
         whenever(dynamicAgentService.chat(any(), any(), any(), any())).thenReturn(
             AgentResponse(response = "Hello!")
@@ -72,7 +72,7 @@ class StreamingChatServiceTest {
     fun `generates conversation ID when none provided`() {
         val latch = CountDownLatch(1)
 
-        whenever(skillRouterService.route(any())).thenReturn(skill)
+        whenever(skillRouterService.route(any(), any())).thenReturn(skill)
         whenever(conversationMemoryService.getHistory(any())).thenReturn(emptyList())
         whenever(dynamicAgentService.chat(any(), any(), any(), any())).thenAnswer {
             AgentResponse(response = "Hello!")
@@ -93,7 +93,7 @@ class StreamingChatServiceTest {
     fun `uses provided conversation ID`() {
         val latch = CountDownLatch(1)
 
-        whenever(skillRouterService.route(any())).thenReturn(skill)
+        whenever(skillRouterService.route(any(), any())).thenReturn(skill)
         whenever(conversationMemoryService.getHistory(eq("my-conv-id"))).thenReturn(emptyList())
         whenever(dynamicAgentService.chat(any(), any(), any(), any())).thenReturn(
             AgentResponse(response = "Hello!")
@@ -112,7 +112,7 @@ class StreamingChatServiceTest {
         val latch = CountDownLatch(1)
         val storedMessages = mutableListOf<ConversationMessage>()
 
-        whenever(skillRouterService.route(any())).thenReturn(skill)
+        whenever(skillRouterService.route(any(), any())).thenReturn(skill)
         whenever(conversationMemoryService.getHistory(any())).thenReturn(emptyList())
         doAnswer { invocation ->
             storedMessages.add(invocation.getArgument(1))
@@ -142,7 +142,7 @@ class StreamingChatServiceTest {
             ConversationMessage(role = "assistant", content = "Previous response")
         )
 
-        whenever(skillRouterService.route(any())).thenReturn(skill)
+        whenever(skillRouterService.route(any(), any())).thenReturn(skill)
         whenever(conversationMemoryService.getHistory(any())).thenReturn(history)
         whenever(dynamicAgentService.chat(any(), any(), any(), any())).thenReturn(
             AgentResponse(response = "I remember!")
@@ -160,7 +160,7 @@ class StreamingChatServiceTest {
     fun `emits warning and continues with empty history when memory unavailable`() {
         val latch = CountDownLatch(1)
 
-        whenever(skillRouterService.route(any())).thenReturn(skill)
+        whenever(skillRouterService.route(any(), any())).thenReturn(skill)
         whenever(conversationMemoryService.getHistory(any())).thenThrow(RuntimeException("Redis down"))
         whenever(dynamicAgentService.chat(any(), any(), any(), any())).thenReturn(
             AgentResponse(response = "Hello!")
@@ -180,7 +180,7 @@ class StreamingChatServiceTest {
         val latch = CountDownLatch(1)
         var addMessageCallCount = 0
 
-        whenever(skillRouterService.route(any())).thenReturn(skill)
+        whenever(skillRouterService.route(any(), any())).thenReturn(skill)
         whenever(conversationMemoryService.getHistory(any())).thenReturn(emptyList())
         doAnswer {
             addMessageCallCount++
@@ -203,7 +203,7 @@ class StreamingChatServiceTest {
     fun `routes to correct skill`() {
         val latch = CountDownLatch(1)
 
-        whenever(skillRouterService.route(eq("What time is it?"))).thenReturn(skill)
+        whenever(skillRouterService.route(eq("What time is it?"), any())).thenReturn(skill)
         whenever(conversationMemoryService.getHistory(any())).thenReturn(emptyList())
         whenever(dynamicAgentService.chat(any(), any(), any(), any())).thenReturn(
             AgentResponse(response = "It's 3pm")
@@ -214,7 +214,7 @@ class StreamingChatServiceTest {
 
         latch.await(5, TimeUnit.SECONDS)
 
-        verify(skillRouterService).route(eq("What time is it?"))
+        verify(skillRouterService).route(eq("What time is it?"), any())
         verify(dynamicAgentService).chat(eq(skill), eq("What time is it?"), any(), any())
     }
 
@@ -222,7 +222,7 @@ class StreamingChatServiceTest {
     fun `completes emitter with error when agent loop throws`() {
         val latch = CountDownLatch(1)
 
-        whenever(skillRouterService.route(any())).thenThrow(RuntimeException("Routing failed"))
+        whenever(skillRouterService.route(any(), any())).thenThrow(RuntimeException("Routing failed"))
         whenever(conversationMemoryService.getHistory(any())).thenReturn(emptyList())
 
         val emitter = service.streamChat("Hi", null)
@@ -235,6 +235,28 @@ class StreamingChatServiceTest {
     }
 
     @Test
+    fun `passes conversation history to skill router`() {
+        val latch = CountDownLatch(1)
+        val history = listOf(
+            ConversationMessage(role = "user", content = "What time is it in Tokyo?"),
+            ConversationMessage(role = "assistant", content = "It is 3:00 PM in Tokyo.")
+        )
+
+        whenever(skillRouterService.route(any(), any())).thenReturn(skill)
+        whenever(conversationMemoryService.getHistory(any())).thenReturn(history)
+        whenever(dynamicAgentService.chat(any(), any(), any(), any())).thenReturn(
+            AgentResponse(response = "Sure!")
+        )
+
+        val emitter = service.streamChat("yes", "conv-id")
+        emitter.onCompletion { latch.countDown() }
+
+        latch.await(5, TimeUnit.SECONDS)
+
+        verify(skillRouterService).route(eq("yes"), eq(history))
+    }
+
+    @Test
     fun `stores user message but not assistant message when agent loop throws`() {
         val latch = CountDownLatch(1)
         val storedMessages = mutableListOf<ConversationMessage>()
@@ -244,7 +266,7 @@ class StreamingChatServiceTest {
             storedMessages.add(invocation.getArgument(1))
             Unit
         }.whenever(conversationMemoryService).addMessage(any(), any())
-        whenever(skillRouterService.route(any())).thenThrow(RuntimeException("Routing failed"))
+        whenever(skillRouterService.route(any(), any())).thenThrow(RuntimeException("Routing failed"))
 
         val emitter = service.streamChat("Hi", null)
         emitter.onCompletion { latch.countDown() }

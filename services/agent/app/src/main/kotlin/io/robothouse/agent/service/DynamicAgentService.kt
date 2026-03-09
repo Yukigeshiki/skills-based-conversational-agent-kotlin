@@ -56,7 +56,7 @@ class DynamicAgentService(
         val specifications = toolRepository.getSpecificationsByNames(skill.toolNames)
         val executors = toolRepository.getExecutorsByNames(skill.toolNames)
 
-        val plan = taskPlanningService.createPlan(userMessage, specifications)
+        val plan = taskPlanningService.createPlan(userMessage, specifications, conversationHistory)
         log.debug { "Created plan with ${plan.steps.size} step(s): ${plan.reasoning}" }
         emitEvent(listener) { AgentEvent.PlanCreatedEvent(plan = plan) }
 

@@ -52,7 +52,7 @@ class DynamicAgentServiceTest {
 
     @BeforeEach
     fun setUp() {
-        whenever(taskPlanningService.createPlan(any(), any())).thenReturn(singleStepPlan)
+        whenever(taskPlanningService.createPlan(any(), any(), any())).thenReturn(singleStepPlan)
     }
 
     private fun fakeChatModel(vararg responses: ChatResponse): ChatModel {
@@ -195,7 +195,7 @@ class DynamicAgentServiceTest {
             ),
             reasoning = "Need both times"
         )
-        whenever(taskPlanningService.createPlan(any(), any())).thenReturn(multiStepPlan)
+        whenever(taskPlanningService.createPlan(any(), any(), any())).thenReturn(multiStepPlan)
 
         val model = fakeChatModel(
             ChatResponse.builder().aiMessage(AiMessage.from("NYC: 10am")).build(),
@@ -234,7 +234,7 @@ class DynamicAgentServiceTest {
             ),
             reasoning = "Two steps"
         )
-        whenever(taskPlanningService.createPlan(any(), any())).thenReturn(multiStepPlan)
+        whenever(taskPlanningService.createPlan(any(), any(), any())).thenReturn(multiStepPlan)
 
         var callCount = 0
         val model = object : ChatModel {
@@ -439,7 +439,7 @@ class DynamicAgentServiceTest {
             ),
             reasoning = "Two steps"
         )
-        whenever(taskPlanningService.createPlan(any(), any())).thenReturn(multiStepPlan)
+        whenever(taskPlanningService.createPlan(any(), any(), any())).thenReturn(multiStepPlan)
 
         val model = fakeChatModel(
             ChatResponse.builder().aiMessage(AiMessage.from("One")).build(),

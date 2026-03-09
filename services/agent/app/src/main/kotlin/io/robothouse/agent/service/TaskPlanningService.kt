@@ -8,6 +8,7 @@ import dev.langchain4j.data.message.UserMessage
 import dev.langchain4j.model.chat.ChatModel
 import dev.langchain4j.model.chat.request.ChatRequest
 import io.robothouse.agent.config.AgentProperties
+import io.robothouse.agent.model.ConversationMessage
 import io.robothouse.agent.model.PlanStep
 import io.robothouse.agent.model.TaskPlan
 import io.robothouse.agent.util.log
@@ -80,7 +81,8 @@ class TaskPlanningService(
      */
     fun createPlan(
         userMessage: String,
-        toolSpecifications: List<ToolSpecification>
+        toolSpecifications: List<ToolSpecification>,
+        conversationHistory: List<ConversationMessage> = emptyList()
     ): TaskPlan {
         log.debug { "Creating plan with ${toolSpecifications.size} available tool(s)" }
 
@@ -90,11 +92,13 @@ class TaskPlanningService(
 
         val resolvedPrompt = PLANNING_PROMPT.replace("{{tools}}", toolDescriptions)
 
+        val contextualMessage = buildContextualMessage(userMessage, conversationHistory)
+
         val request = ChatRequest.builder()
             .messages(
                 listOf(
                     SystemMessage.from(resolvedPrompt),
-                    UserMessage.from(userMessage)
+                    UserMessage.from(contextualMessage)
                 )
             )
             .build()
@@ -145,5 +149,12 @@ class TaskPlanningService(
             ),
             reasoning = "Fallback: could not parse plan"
         )
+    }
+
+    private fun buildContextualMessage(userMessage: String, conversationHistory: List<ConversationMessage>): String {
+        val lastAssistantMessage = conversationHistory.lastOrNull { it.role == "assistant" }
+            ?: return userMessage
+
+        return "Previous assistant response: ${lastAssistantMessage.content}\n\nUser follow-up: $userMessage"
     }
 }

@@ -2,11 +2,14 @@ package io.robothouse.agent.service
 
 import dev.langchain4j.agent.tool.ToolSpecification
 import dev.langchain4j.data.message.AiMessage
+import dev.langchain4j.data.message.UserMessage
 import dev.langchain4j.model.chat.ChatModel
 import dev.langchain4j.model.chat.request.ChatRequest
 import dev.langchain4j.model.chat.response.ChatResponse
 import io.robothouse.agent.config.AgentProperties
+import io.robothouse.agent.model.ConversationMessage
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class TaskPlanningServiceTest {
@@ -17,9 +20,12 @@ class TaskPlanningServiceTest {
         maxPlanSteps = 5
     )
 
+    private var capturedRequest: ChatRequest? = null
+
     private fun fakeChatModel(response: String): ChatModel {
         return object : ChatModel {
             override fun doChat(request: ChatRequest): ChatResponse {
+                capturedRequest = request
                 return ChatResponse.builder().aiMessage(AiMessage.from(response)).build()
             }
         }
@@ -106,5 +112,32 @@ class TaskPlanningServiceTest {
 
         assertEquals(1, plan.steps.size)
         assertEquals("Wrapped in fences", plan.reasoning)
+    }
+
+    @Test
+    fun `includes last assistant message as context when history is present`() {
+        val json = """{"reasoning": "Follow-up", "steps": [{"stepNumber": 1, "description": "Answer", "expectedTools": []}]}"""
+        val history = listOf(
+            ConversationMessage(role = "user", content = "Tell me about tomatoes"),
+            ConversationMessage(role = "assistant", content = "Tomatoes are wonderful fruits...")
+        )
+
+        val service = TaskPlanningService(fakeChatModel(json), agentProperties)
+        service.createPlan("Varieties.", emptyList(), history)
+
+        val userMessageText = (capturedRequest!!.messages().last() as UserMessage).singleText()
+        assertTrue(userMessageText.contains("Tomatoes are wonderful fruits..."))
+        assertTrue(userMessageText.contains("Varieties."))
+    }
+
+    @Test
+    fun `sends only user message when history is empty`() {
+        val json = """{"reasoning": "Simple", "steps": [{"stepNumber": 1, "description": "Answer", "expectedTools": []}]}"""
+
+        val service = TaskPlanningService(fakeChatModel(json), agentProperties)
+        service.createPlan("Varieties.", emptyList(), emptyList())
+
+        val userMessageText = (capturedRequest!!.messages().last() as UserMessage).singleText()
+        assertEquals("Varieties.", userMessageText)
     }
 }
