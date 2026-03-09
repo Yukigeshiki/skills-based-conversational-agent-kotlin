@@ -14,7 +14,6 @@ export interface CreateSkillRequest {
   description: string
   systemPrompt: string
   toolNames: string[]
-  planningPrompt?: string
 }
 
 /** Request body for partially updating an existing skill. All fields are optional. */
@@ -23,5 +22,4 @@ export interface UpdateSkillRequest {
   description?: string
   systemPrompt?: string
   toolNames?: string[]
-  planningPrompt?: string
 }

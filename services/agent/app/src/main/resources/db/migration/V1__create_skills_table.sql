@@ -4,7 +4,6 @@ CREATE TABLE IF NOT EXISTS skills (
     description VARCHAR(1000) NOT NULL,
     system_prompt VARCHAR(4000) NOT NULL,
     tool_names VARCHAR(255) NOT NULL,
-    planning_prompt VARCHAR(4000),
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );

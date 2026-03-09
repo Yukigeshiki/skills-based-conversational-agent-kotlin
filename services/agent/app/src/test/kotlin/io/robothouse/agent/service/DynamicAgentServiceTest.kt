@@ -23,13 +23,12 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.mockito.kotlin.any
 import org.mockito.kotlin.anyOrNull
 import org.mockito.kotlin.mock
-import org.mockito.kotlin.never
-import org.mockito.kotlin.verify
 import org.mockito.kotlin.whenever
 import java.util.concurrent.TimeoutException
 
@@ -46,13 +45,15 @@ class DynamicAgentServiceTest {
         toolNames = listOf("TestTool")
     )
 
-    private val skillWithPlanning = Skill(
-        name = "planning-skill",
-        description = "test",
-        systemPrompt = "You are a test assistant.",
-        toolNames = listOf("TestTool"),
-        planningPrompt = "Plan the task"
+    private val singleStepPlan = TaskPlan(
+        steps = listOf(PlanStep(stepNumber = 1, description = "Answer directly")),
+        reasoning = "Simple request"
     )
+
+    @BeforeEach
+    fun setUp() {
+        whenever(taskPlanningService.createPlan(any(), any())).thenReturn(singleStepPlan)
+    }
 
     private fun fakeChatModel(vararg responses: ChatResponse): ChatModel {
         val queue = ArrayDeque(responses.toList())
@@ -165,40 +166,16 @@ class DynamicAgentServiceTest {
     }
 
     @Test
-    fun `skill without planningPrompt bypasses planning`() {
-        whenever(toolRepository.getSpecificationsByNames(any())).thenReturn(emptyList())
-        whenever(toolRepository.getExecutorsByNames(any())).thenReturn(emptyMap())
-
-        val model = fakeChatModel(
-            ChatResponse.builder().aiMessage(AiMessage.from("Direct response")).build()
-        )
-        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
-
-        val result = service.chat(skill, "Hi")
-
-        assertEquals("Direct response", result.response)
-        assertNull(result.plan)
-        assertNull(result.planStepResults)
-        verify(taskPlanningService, never()).createPlan(any(), any(), any())
-    }
-
-    @Test
     fun `single-step plan uses fast path`() {
         whenever(toolRepository.getSpecificationsByNames(any())).thenReturn(emptyList())
         whenever(toolRepository.getExecutorsByNames(any())).thenReturn(emptyMap())
-
-        val singleStepPlan = TaskPlan(
-            steps = listOf(PlanStep(stepNumber = 1, description = "Answer directly")),
-            reasoning = "Simple request"
-        )
-        whenever(taskPlanningService.createPlan(any(), any(), any())).thenReturn(singleStepPlan)
 
         val model = fakeChatModel(
             ChatResponse.builder().aiMessage(AiMessage.from("Simple answer")).build()
         )
         val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
 
-        val result = service.chat(skillWithPlanning, "What is 2+2?")
+        val result = service.chat(skill, "What is 2+2?")
 
         assertEquals("Simple answer", result.response)
         assertNotNull(result.plan)
@@ -218,7 +195,7 @@ class DynamicAgentServiceTest {
             ),
             reasoning = "Need both times"
         )
-        whenever(taskPlanningService.createPlan(any(), any(), any())).thenReturn(multiStepPlan)
+        whenever(taskPlanningService.createPlan(any(), any())).thenReturn(multiStepPlan)
 
         val model = fakeChatModel(
             ChatResponse.builder().aiMessage(AiMessage.from("NYC: 10am")).build(),
@@ -227,7 +204,7 @@ class DynamicAgentServiceTest {
         )
         val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
 
-        val result = service.chat(skillWithPlanning, "What time is it in NYC and Tokyo?")
+        val result = service.chat(skill, "What time is it in NYC and Tokyo?")
 
         assertEquals("NYC is 10am, Tokyo is 11pm.", result.response)
         assertNotNull(result.plan)
@@ -257,7 +234,7 @@ class DynamicAgentServiceTest {
             ),
             reasoning = "Two steps"
         )
-        whenever(taskPlanningService.createPlan(any(), any(), any())).thenReturn(multiStepPlan)
+        whenever(taskPlanningService.createPlan(any(), any())).thenReturn(multiStepPlan)
 
         var callCount = 0
         val model = object : ChatModel {
@@ -279,7 +256,7 @@ class DynamicAgentServiceTest {
         }
         val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
 
-        val result = service.chat(skillWithPlanning, "Do two things")
+        val result = service.chat(skill, "Do two things")
 
         assertNotNull(result.planStepResults)
         assertEquals(2, result.planStepResults!!.size)
@@ -462,7 +439,7 @@ class DynamicAgentServiceTest {
             ),
             reasoning = "Two steps"
         )
-        whenever(taskPlanningService.createPlan(any(), any(), any())).thenReturn(multiStepPlan)
+        whenever(taskPlanningService.createPlan(any(), any())).thenReturn(multiStepPlan)
 
         val model = fakeChatModel(
             ChatResponse.builder().aiMessage(AiMessage.from("One")).build(),
@@ -472,7 +449,7 @@ class DynamicAgentServiceTest {
         val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
 
         val events = mutableListOf<AgentEvent>()
-        service.chat(skillWithPlanning, "Do two things", AgentEventListener { events.add(it) })
+        service.chat(skill, "Do two things", AgentEventListener { events.add(it) })
 
         assertTrue(events.any { it is AgentEvent.PlanCreatedEvent })
         assertEquals(2, events.filterIsInstance<AgentEvent.PlanStepStartedEvent>().size)
@@ -518,6 +495,7 @@ class DynamicAgentServiceTest {
         val eventTypes = events.map { it.type }
         assertEquals(
             listOf(
+                "plan_created",
                 "iteration_started",
                 "thought",
                 "tool_call_started",

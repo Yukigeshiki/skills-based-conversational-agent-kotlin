@@ -39,7 +39,9 @@ class SkillSeeder(
         val skills = listOf(
             Skill(
                 name = "general-assistant",
-                description = "A general-purpose assistant that can help with a wide variety of questions and tasks including conversation, knowledge, and analysis.",
+                description = "A general-purpose assistant that can help with a wide variety of questions and tasks " +
+                    "including conversation, knowledge, and analysis. " +
+                    "For example: 'What is the current date and time in Tokyo?'",
                 systemPrompt = """
                     |You are a helpful assistant. Answer questions concisely and accurately. Use available tools when appropriate.
                     |
@@ -50,36 +52,7 @@ class SkillSeeder(
                     |- **Use tools** — leverage available tools when they can help answer the question
                     |- **Be helpful** — if you can't answer directly, suggest next steps
                 """.trimMargin(),
-                toolNames = listOf("DateTimeTool"),
-                planningPrompt = """
-                    |You are a task planner. Given a user request and a list of available tools, decompose the request into a structured plan.
-                    |
-                    |## Planning Rules
-                    |
-                    |- **Simple requests** — return a single-step plan
-                    |- **Complex requests** — break into sequential steps
-                    |
-                    |## Available Tools
-                    |
-                    |{{tools}}
-                    |
-                    |## Response Format
-                    |
-                    |Respond with **only** a JSON object in this format:
-                    |
-                    |```json
-                    |{
-                    |  "reasoning": "Brief explanation of why this plan was chosen",
-                    |  "steps": [
-                    |    {
-                    |      "stepNumber": 1,
-                    |      "description": "What to do in this step",
-                    |      "expectedTools": ["toolName1"]
-                    |    }
-                    |  ]
-                    |}
-                    |```
-                """.trimMargin()
+                toolNames = listOf("DateTimeTool")
             )
         )
 

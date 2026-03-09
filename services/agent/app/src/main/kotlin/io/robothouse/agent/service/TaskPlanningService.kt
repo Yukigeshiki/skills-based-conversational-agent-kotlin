@@ -28,6 +28,50 @@ class TaskPlanningService(
 
     private val objectMapper = jacksonObjectMapper()
 
+    companion object {
+        val PLANNING_PROMPT = """
+            |You are a task planner. Given a user request and a list of available tools, decide whether the request needs multiple execution steps.
+            |
+            |## When to use multiple steps
+            |
+            |Use multiple steps **only** when the request genuinely requires sequential reasoning — i.e. the output of one step informs the next, or multiple distinct tool calls must happen in sequence.
+            |
+            |Examples of multi-step requests:
+            |- "What's the time difference between Tokyo and New York?" → step 1: get Tokyo time, step 2: get New York time (requires two separate tool calls whose results are combined)
+            |- "Look up the weather then suggest an outfit" → step 1: fetch weather, step 2: reason about outfit based on the result
+            |
+            |## When to use a single step
+            |
+            |Use a single step for everything else, including:
+            |- Questions that can be answered in one pass, even if the answer has multiple sections
+            |- Requests that use a single tool call
+            |- Conversational or knowledge-based queries with no tool use
+            |
+            |**Default to a single step.** When in doubt, use one step.
+            |
+            |## Available Tools
+            |
+            |{{tools}}
+            |
+            |## Response Format
+            |
+            |Respond with **only** a JSON object in this format:
+            |
+            |```json
+            |{
+            |  "reasoning": "Brief explanation of why this plan was chosen",
+            |  "steps": [
+            |    {
+            |      "stepNumber": 1,
+            |      "description": "What to do in this step",
+            |      "expectedTools": ["toolName1"]
+            |    }
+            |  ]
+            |}
+            |```
+        """.trimMargin()
+    }
+
     /**
      * Creates a task plan by sending the planning prompt and user message to the LLM.
      *
@@ -35,7 +79,6 @@ class TaskPlanningService(
      * available tool descriptions before making the LLM call.
      */
     fun createPlan(
-        planningPrompt: String,
         userMessage: String,
         toolSpecifications: List<ToolSpecification>
     ): TaskPlan {
@@ -45,7 +88,7 @@ class TaskPlanningService(
             "- ${spec.name()}: ${spec.description() ?: "No description"}"
         }
 
-        val resolvedPrompt = planningPrompt.replace("{{tools}}", toolDescriptions)
+        val resolvedPrompt = PLANNING_PROMPT.replace("{{tools}}", toolDescriptions)
 
         val request = ChatRequest.builder()
             .messages(

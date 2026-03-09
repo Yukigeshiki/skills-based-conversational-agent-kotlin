@@ -16,8 +16,7 @@ import java.util.UUID
 /**
  * JPA entity representing a skill that the agent can be routed to.
  *
- * Each skill defines a system prompt, a set of available tools,
- * and an optional planning prompt for multi-step task decomposition.
+ * Each skill defines a system prompt and a set of available tools.
  */
 @Entity
 @Table(name = "skills")
@@ -38,9 +37,6 @@ class Skill(
     @Column(name = "tool_names", nullable = false)
     @Convert(converter = StringListConverter::class)
     var toolNames: List<String> = emptyList(),
-
-    @Column(name = "planning_prompt", length = MAX_SYSTEM_PROMPT_LENGTH)
-    var planningPrompt: String? = null,
 
     @Column(name = "created_at", nullable = false, updatable = false)
     var createdAt: Instant = Instant.now(),

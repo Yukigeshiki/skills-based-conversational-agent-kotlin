@@ -46,20 +46,6 @@
           />
           <div v-show="systemPromptPreview" class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3" style="min-height: 18rem; max-height: 18rem;" v-html="renderMarkdown(form.systemPrompt)" />
         </div>
-        <div class="space-y-2">
-          <div class="flex items-center justify-between">
-            <Label for="skill-planning-prompt">Planning Prompt (optional, should be between 100-500 tokens for best results)</Label>
-            <PreviewToggleButton :previewing="planningPromptPreview" @toggle="planningPromptPreview = !planningPromptPreview" />
-          </div>
-          <Textarea
-            v-show="!planningPromptPreview"
-            id="skill-planning-prompt"
-            v-model="form.planningPrompt"
-            placeholder="Multi-step task decomposition instructions"
-            rows="6"
-          />
-          <div v-show="planningPromptPreview" class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3" style="min-height: 9rem; max-height: 9rem;" v-html="renderMarkdown(form.planningPrompt)" />
-        </div>
 
         <div v-if="validationError" class="text-sm text-destructive">{{ validationError }}</div>
         <div v-if="error" class="text-sm text-destructive">{{ error }}</div>
@@ -122,12 +108,10 @@ const form = reactive({
   name: '',
   description: '',
   systemPrompt: '',
-  planningPrompt: '',
   toolNames: [] as string[],
 })
 
 const systemPromptPreview = ref(false)
-const planningPromptPreview = ref(false)
 const validationError = ref('')
 const loading = ref(false)
 
@@ -135,10 +119,8 @@ function resetForm() {
   form.name = ''
   form.description = ''
   form.systemPrompt = ''
-  form.planningPrompt = ''
   form.toolNames = []
   systemPromptPreview.value = false
-  planningPromptPreview.value = false
   validationError.value = ''
 }
 
@@ -147,7 +129,6 @@ watch(open, async (isOpen) => {
 
   if (props.skillId) {
     systemPromptPreview.value = false
-    planningPromptPreview.value = false
     validationError.value = ''
     loading.value = true
     try {
@@ -155,7 +136,6 @@ watch(open, async (isOpen) => {
       form.name = skill.name
       form.description = skill.description
       form.systemPrompt = skill.systemPrompt
-      form.planningPrompt = skill.planningPrompt || ''
       form.toolNames = [...skill.toolNames]
     } catch {
       open.value = false
@@ -180,7 +160,6 @@ function handleSubmit() {
     description: form.description,
     systemPrompt: form.systemPrompt,
     toolNames: [...form.toolNames],
-    ...(form.planningPrompt.trim() ? { planningPrompt: form.planningPrompt } : {}),
   }
 
   if (isEditMode.value) {

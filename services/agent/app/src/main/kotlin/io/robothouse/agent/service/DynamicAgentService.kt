@@ -31,9 +31,9 @@ import java.util.concurrent.TimeoutException
 /**
  * Executes agent interactions for a given skill by running an LLM tool-execution loop.
  *
- * Supports optional task planning: skills with a planning prompt are decomposed
- * into multistep plans before execution, with results synthesized into a final response.
- * Skills without a planning prompt execute directly in a single agent loop.
+ * All skills use multistep planning: requests are decomposed into plans before execution,
+ * with results synthesized into a final response. Simple requests produce single-step
+ * plans and skip per-step overhead.
  */
 @Service
 class DynamicAgentService(
@@ -47,9 +47,8 @@ class DynamicAgentService(
     /**
      * Processes a chat request for the given skill.
      *
-     * If the skill has a planning prompt, decomposes the request into a multistep
-     * plan and executes each step sequentially. Otherwise, executes directly
-     * in a single agent loop.
+     * Decomposes the request into a multistep plan and executes each step sequentially.
+     * Single-step plans skip per-step overhead and execute directly.
      */
     fun chat(skill: Skill, userMessage: String, listener: AgentEventListener = AgentEventListener.NOOP, conversationHistory: List<ConversationMessage> = emptyList()): AgentResponse {
         log.debug { "Processing chat request for skill: name=${skill.name}, tools=${skill.toolNames}" }
@@ -57,11 +56,7 @@ class DynamicAgentService(
         val specifications = toolRepository.getSpecificationsByNames(skill.toolNames)
         val executors = toolRepository.getExecutorsByNames(skill.toolNames)
 
-        if (skill.planningPrompt == null) {
-            return executeStep(skill.systemPrompt, userMessage, specifications, executors, skill.name, listener, conversationHistory = conversationHistory)
-        }
-
-        val plan = taskPlanningService.createPlan(skill.planningPrompt!!, userMessage, specifications)
+        val plan = taskPlanningService.createPlan(userMessage, specifications)
         log.debug { "Created plan with ${plan.steps.size} step(s): ${plan.reasoning}" }
         emitEvent(listener) { AgentEvent.PlanCreatedEvent(plan = plan) }
 

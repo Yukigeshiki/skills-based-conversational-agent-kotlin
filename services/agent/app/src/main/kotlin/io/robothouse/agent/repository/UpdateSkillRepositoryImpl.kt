@@ -37,10 +37,6 @@ class UpdateSkillRepositoryImpl(
             setClauses.add("s.toolNames = :toolNames")
             params["toolNames"] = it
         }
-        request.planningPrompt?.let {
-            setClauses.add("s.planningPrompt = :planningPrompt")
-            params["planningPrompt"] = it
-        }
 
         if (setClauses.isEmpty()) {
             return entityManager.find(Skill::class.java, id)

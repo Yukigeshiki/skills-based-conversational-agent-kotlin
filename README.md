@@ -10,7 +10,7 @@ A conversational agent built with Kotlin and Spring Boot. User messages are rout
 
 1. User message is embedded via OpenAI text-embedding-3-small (1536-dim)
 2. Similarity search in pgvector finds the best-matching skill
-3. The skill provides a system prompt, tool list, and optional planning prompt
+3. The skill provides a system prompt and tool list; the agent plans execution steps
 4. Agent loop: Claude reasons, calls tools, observes results, repeats until done
 5. SSE events stream back throughout (skill matched, thoughts, tool calls, response)
 
@@ -70,11 +70,11 @@ The UI provides a chat interface and a skills management page for creating, upda
 
 ## Skills
 
-Skills define how the agent handles different types of requests. Each skill has a name, description, system prompt, optional planning prompt, and a list of tools. When a user sends a message, it is embedded and matched to the most relevant skill via semantic similarity search against skill descriptions.
+Skills define how the agent handles different types of requests. Each skill has a name, description, system prompt, and a list of tools. When a user sends a message, it is embedded and matched to the most relevant skill via semantic similarity search against skill descriptions.
 
-A `general-assistant` skill is seeded on first startup. To create additional skills, use the skills management page in the UI or the REST API. System and planning prompts should be written in markdown.
+A `general-assistant` skill is seeded on first startup. To create additional skills, use the skills management page in the UI or the REST API. System prompts should be written in markdown.
 
-Skills with a `planningPrompt` enable multistep execution — the agent decomposes the request into steps, executes each with the skill's tools, then synthesizes the results.
+All skills use multistep planning — the agent decomposes the request into steps, executes each with the skill's tools, then synthesizes the results. Simple requests produce single-step plans and skip per-step overhead.
 
 ## Tools
 

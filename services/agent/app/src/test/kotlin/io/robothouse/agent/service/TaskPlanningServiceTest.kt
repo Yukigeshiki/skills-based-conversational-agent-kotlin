@@ -39,7 +39,6 @@ class TaskPlanningServiceTest {
 
         val service = TaskPlanningService(fakeChatModel(json), agentProperties)
         val plan = service.createPlan(
-            "Plan: {{tools}}",
             "Do something complex",
             listOf(ToolSpecification.builder().name("ToolA").description("A").build())
         )
@@ -62,7 +61,7 @@ class TaskPlanningServiceTest {
         """.trimIndent()
 
         val service = TaskPlanningService(fakeChatModel(json), agentProperties)
-        val plan = service.createPlan("Plan: {{tools}}", "Simple question", emptyList())
+        val plan = service.createPlan("Simple question", emptyList())
 
         assertEquals(1, plan.steps.size)
         assertEquals("Simple request", plan.reasoning)
@@ -71,7 +70,7 @@ class TaskPlanningServiceTest {
     @Test
     fun `falls back to single-step plan on malformed JSON`() {
         val service = TaskPlanningService(fakeChatModel("not valid json at all"), agentProperties)
-        val plan = service.createPlan("Plan: {{tools}}", "Do something", emptyList())
+        val plan = service.createPlan("Do something", emptyList())
 
         assertEquals(1, plan.steps.size)
         assertEquals("Do something", plan.steps[0].description)
@@ -86,7 +85,7 @@ class TaskPlanningServiceTest {
         val json = """{"reasoning": "Many steps", "steps": [$steps]}"""
 
         val service = TaskPlanningService(fakeChatModel(json), agentProperties)
-        val plan = service.createPlan("Plan: {{tools}}", "Complex task", emptyList())
+        val plan = service.createPlan("Complex task", emptyList())
 
         assertEquals(5, plan.steps.size)
     }
@@ -103,7 +102,7 @@ class TaskPlanningServiceTest {
         """.trimIndent()
 
         val service = TaskPlanningService(fakeChatModel(json), agentProperties)
-        val plan = service.createPlan("Plan: {{tools}}", "Question", emptyList())
+        val plan = service.createPlan("Question", emptyList())
 
         assertEquals(1, plan.steps.size)
         assertEquals("Wrapped in fences", plan.reasoning)

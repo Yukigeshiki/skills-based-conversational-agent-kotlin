@@ -69,8 +69,7 @@ class SkillService(
                 name = request.name,
                 description = request.description,
                 systemPrompt = request.systemPrompt,
-                toolNames = request.toolNames,
-                planningPrompt = request.planningPrompt
+                toolNames = request.toolNames
             )
             val persisted = skillRepository.save(skill)
             embedSkill(persisted)

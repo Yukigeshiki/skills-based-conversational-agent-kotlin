@@ -23,8 +23,5 @@ data class UpdateSkillRequest(
 
     @field:Size(max = 10, message = "Tool names must not exceed 10 entries")
     @field:RegisteredTools(rejectEmpty = true)
-    val toolNames: List<@Pattern(regexp = "^[a-zA-Z][a-zA-Z0-9]*$", message = "Tool name must be camelCase alphanumeric") String>? = null,
-
-    @field:MaxTokens(500, message = "Planning prompt must not exceed 500 tokens")
-    val planningPrompt: String? = null
+    val toolNames: List<@Pattern(regexp = "^[a-zA-Z][a-zA-Z0-9]*$", message = "Tool name must be camelCase alphanumeric") String>? = null
 )

@@ -32,15 +32,6 @@
           <div class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded border p-4 max-h-64" v-html="renderMarkdown(skill.systemPrompt)" />
         </CollapsibleSection>
 
-        <!-- Planning Prompt section -->
-        <CollapsibleSection v-if="skill.planningPrompt" title="Planning Prompt" :default-expanded="false">
-          <div class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded border p-4 max-h-64" v-html="renderMarkdown(skill.planningPrompt)" />
-        </CollapsibleSection>
-        <div v-else>
-          <h3 class="font-semibold mb-2">Planning Prompt</h3>
-          <div class="text-sm text-muted-foreground italic">Not configured</div>
-        </div>
-
         <!-- Tools section -->
         <CollapsibleSection v-if="skill.toolNames.length" title="Tools" :default-expanded="true">
           <div class="flex flex-wrap gap-2">
@@ -86,7 +77,7 @@
 
 /**
  * Expanded content panel for a skill, showing details, system prompt,
- * planning prompt, tools, metadata, and a danger zone with a delete button.
+ * tools, metadata, and a danger zone with a delete button.
  */
 <script setup lang="ts">
 import { Badge } from '@/components/ui/badge'
