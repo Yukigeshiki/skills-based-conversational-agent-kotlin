@@ -96,8 +96,8 @@ class SkillService(
                     throw NotFoundException("Skill not found")
                 }
 
-            // Step 2: Update embedding if description changed
-            request.description?.let {
+            // Step 2: Update embedding if name or description changed
+            if (request.name != null || request.description != null) {
                 removeEmbeddingsBySkillId(persisted.id.toString())
                 embedSkill(persisted)
             }
@@ -129,15 +129,23 @@ class SkillService(
     }
 
     /**
-     * Embeds the skill's description and stores it in the embedding store
-     * with the skill ID and a description hash in the metadata.
+     * Embeds the skill's name and description and stores it in the embedding store
+     * with the skill ID and a content hash in the metadata.
      */
     private fun embedSkill(skill: Skill) {
-        val embedding = embeddingModel.embed(skill.description).content()
-        val descriptionHash = skill.description.hashCode().toString()
-        val metadata = Metadata.from("skillId", skill.id.toString()).put("descriptionHash", descriptionHash)
-        val segment = TextSegment.from(skill.description, metadata)
+        val embeddingText = buildEmbeddingText(skill)
+        val embedding = embeddingModel.embed(embeddingText).content()
+        val contentHash = embeddingText.hashCode().toString()
+        val metadata = Metadata.from("skillId", skill.id.toString()).put("contentHash", contentHash)
+        val segment = TextSegment.from(embeddingText, metadata)
         embeddingStore.add(embedding, segment)
+    }
+
+    /**
+     * Combines the skill's name and description into a single string for embedding.
+     */
+    private fun buildEmbeddingText(skill: Skill): String {
+        return "Skill: ${skill.name}. ${skill.description}"
     }
 
     /**

@@ -146,7 +146,7 @@ class SkillServiceTest {
 
         assertNotNull(result)
         verify(skillRepository).save(any<Skill>())
-        verify(embeddingModel).embed(eq("A test skill"))
+        verify(embeddingModel).embed(eq("Skill: test-skill. A test skill"))
         verify(embeddingStore).add(eq(embedding), any<TextSegment>())
     }
 
@@ -187,13 +187,36 @@ class SkillServiceTest {
 
         assertEquals("Updated description", result.description)
         verify(embeddingStore).removeAll(any<Filter>())
-        verify(embeddingModel).embed(eq("Updated description"))
+        verify(embeddingModel).embed(eq("Skill: test-skill. Updated description"))
         verify(embeddingStore).add(eq(embedding), any<TextSegment>())
     }
 
     @Test
-    fun `update does not re-embed when description is unchanged`() {
+    fun `update re-embeds when name changes`() {
         val request = UpdateSkillRequest(name = "renamed-skill")
+        val renamedSkill = Skill(
+            id = skillId,
+            name = "renamed-skill",
+            description = "A test skill",
+            systemPrompt = "You are a test assistant.",
+            toolNames = listOf("TestTool")
+        )
+        val embedding = Embedding(FloatArray(384) { 0.2f })
+
+        whenever(skillRepository.patchUpdate(skillId, request)).thenReturn(renamedSkill)
+        whenever(embeddingModel.embed(any<String>())).thenReturn(Response(embedding))
+
+        val result = service.update(skillId, request)
+
+        assertEquals("renamed-skill", result.name)
+        verify(embeddingStore).removeAll(any<Filter>())
+        verify(embeddingModel).embed(eq("Skill: renamed-skill. A test skill"))
+        verify(embeddingStore).add(eq(embedding), any<TextSegment>())
+    }
+
+    @Test
+    fun `update does not re-embed when name and description are unchanged`() {
+        val request = UpdateSkillRequest(systemPrompt = "Updated prompt")
 
         whenever(skillRepository.patchUpdate(skillId, request)).thenReturn(skill)
 
@@ -254,7 +277,7 @@ class SkillServiceTest {
 
         verify(embeddingStore).add(eq(embedding), argThat<TextSegment> { segment ->
             segment.metadata().getString("skillId") == skillId.toString() &&
-                segment.metadata().getString("descriptionHash") != null
+                segment.metadata().getString("contentHash") != null
         })
     }
 }

@@ -38,6 +38,48 @@ class SkillRouterServiceTest {
     private val embedding = Embedding.from(FloatArray(EmbeddingConfig.EMBEDDING_DIMENSION) { 0.1f })
 
     @Test
+    fun `routes to skill when user mentions skill name`() {
+        val skill = Skill(id = UUID.randomUUID(), name = "datetime-assistant", description = "time help", systemPrompt = "prompt", toolNames = listOf("DateTimeTool"))
+        val fallbackSkill = Skill(id = UUID.randomUUID(), name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
+
+        whenever(skillRepository.findAll()).thenReturn(listOf(skill, fallbackSkill))
+
+        val result = routerService.route("Can you use the datetime-assistant to tell me the time?")
+
+        assertEquals("datetime-assistant", result.name)
+        // Should not call embedding model at all
+        verify(embeddingModel, times(0)).embed(any<String>())
+    }
+
+    @Test
+    fun `routes to skill by name case-insensitively`() {
+        val skill = Skill(id = UUID.randomUUID(), name = "DateTime-Assistant", description = "time help", systemPrompt = "prompt", toolNames = listOf("DateTimeTool"))
+        val fallbackSkill = Skill(id = UUID.randomUUID(), name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
+
+        whenever(skillRepository.findAll()).thenReturn(listOf(skill, fallbackSkill))
+
+        val result = routerService.route("Please use datetime-assistant for this")
+
+        assertEquals("DateTime-Assistant", result.name)
+    }
+
+    @Test
+    fun `does not match fallback skill by name`() {
+        val fallbackSkill = Skill(id = UUID.randomUUID(), name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
+
+        whenever(skillRepository.findAll()).thenReturn(listOf(fallbackSkill))
+        whenever(embeddingModel.embed(any<String>())).thenReturn(Response(embedding))
+        whenever(embeddingStore.search(any<EmbeddingSearchRequest>())).thenReturn(EmbeddingSearchResult(emptyList()))
+        whenever(skillRepository.findByName("general-assistant")).thenReturn(fallbackSkill)
+
+        val result = routerService.route("use the general-assistant skill")
+
+        assertEquals("general-assistant", result.name)
+        // Should fall through to embedding search since fallback is excluded from name matching
+        verify(embeddingModel).embed(any<String>())
+    }
+
+    @Test
     fun `routes to highest scoring skill`() {
         val skillId = UUID.randomUUID()
         val skill = Skill(id = skillId, name = "datetime-assistant", description = "time help", systemPrompt = "prompt", toolNames = listOf("DateTimeTool"))

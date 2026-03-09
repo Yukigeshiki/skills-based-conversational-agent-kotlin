@@ -160,7 +160,7 @@ sealed class AgentEvent {
     data class SkillReroutedEvent(
         val fromSkill: String,
         val toSkill: String,
-        val reason: String = "Response did not adequately answer the question",
+        val reason: String = "Response did not adequately answer the question.",
         override val timestamp: Instant = Instant.now()
     ) : AgentEvent() {
         override val type: String = "skill_rerouted"

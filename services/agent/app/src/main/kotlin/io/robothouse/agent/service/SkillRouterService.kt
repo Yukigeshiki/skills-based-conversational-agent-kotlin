@@ -38,12 +38,19 @@ class SkillRouterService(
     /**
      * Finds the best-matching skill for a user message using embedding similarity.
      *
-     * Routes to the highest-scoring skill. If the best match is the fallback skill
-     * with a score below the context retry threshold and conversation history is
-     * available, retries with context from recent user messages.
+     * First checks if the user explicitly mentions a skill by name. If so, routes
+     * directly to that skill. Otherwise, routes to the highest-scoring skill via
+     * embedding similarity. If the best match is the fallback skill with a score
+     * below the context retry threshold and conversation history is available,
+     * retries with context from recent user messages.
      */
     fun route(userMessage: String, conversationHistory: List<ConversationMessage> = emptyList()): Skill {
         log.debug { "Routing message to skill" }
+
+        findSkillByNameMention(userMessage)?.let { skill ->
+            log.info { "Routed to skill by name mention: ${skill.name}" }
+            return skill
+        }
 
         log.debug { "Pass 1 — direct match for query: \"$userMessage\"" }
         val directMatch = findTopSkill(userMessage)
@@ -75,6 +82,9 @@ class SkillRouterService(
             }
     }
 
+    /**
+     * Returns the fallback skill, or throws [NotFoundException] if it does not exist.
+     */
     fun findFallbackSkill(): Skill {
         return skillRepository.findByName(FALLBACK_SKILL_NAME)
             ?: run {
@@ -83,6 +93,27 @@ class SkillRouterService(
             }
     }
 
+    /**
+     * Checks if the user message mentions a known skill name (case-insensitive).
+     * Excludes the fallback skill to avoid false positives on generic terms.
+     */
+    private fun findSkillByNameMention(userMessage: String): Skill? {
+        val normalizedMessage = userMessage.normalize()
+        return skillRepository.findAll()
+            .filter { it.name != FALLBACK_SKILL_NAME }
+            .find { normalizedMessage.contains(it.name.normalize()) }
+    }
+
+    /**
+     * Lowercases and strips hyphens/underscores so e.g. "datetime-assistant"
+     * matches "datetime assistant".
+     */
+    private fun String.normalize(): String = lowercase().replace(Regex("[-_]"), "")
+
+    /**
+     * Embeds the [query] and returns the highest-scoring skill from the
+     * embedding store, or null if none match.
+     */
     private fun findTopSkill(query: String): ScoredSkill? {
         val queryEmbedding = embeddingModel.embed(query).content()
 
@@ -114,6 +145,10 @@ class SkillRouterService(
         return ScoredSkill(skill, topMatch.score())
     }
 
+    /**
+     * Prepends recent user messages from [conversationHistory] to [userMessage]
+     * for context-aware embedding search.
+     */
     private fun buildContextualQuery(userMessage: String, conversationHistory: List<ConversationMessage>): String {
         if (conversationHistory.isEmpty() || properties.contextMessageCount == 0) return userMessage
 
