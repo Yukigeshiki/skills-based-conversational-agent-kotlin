@@ -4,15 +4,15 @@
 [![Agent Build](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/agent-build.yml/badge.svg)](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/agent-build.yml)
 [![UI Build](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/ui-build.yml/badge.svg)](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/ui-build.yml)
 
-A conversational agent built with Kotlin and Spring Boot. User messages are routed to skills via semantic similarity, then executed through a tool-use loop powered by Claude (LangChain4j). The UI streams events in real time via SSE.
+A conversational agent built with Kotlin and Spring Boot. User messages are routed to skills via a cascade of skill routing strategies, then executed through a tool-use loop powered by Claude (LangChain4j). The UI streams events in real time via SSE.
 
 ## How It Works
 
-1. User message is embedded via OpenAI text-embedding-3-small (1536-dim)
-2. Similarity search in pgvector finds the best-matching skill
-3. The skill provides a system prompt and tool list; the agent plans execution steps
-4. Agent loop: Claude reasons, calls tools, observes results, repeats until done
-5. SSE events stream back throughout (skill matched, thoughts, tool calls, response)
+1. **Skill routing** — the user message is routed to the best-matching skill (see [Skill Routing](#skill-routing) below)
+2. **Planning** — the skill provides a system prompt and tool list; the agent decomposes the request into execution steps
+3. **Agent loop** — Claude reasons, calls tools, observes results, and repeats until done
+4. **Validation** — specialist skill responses are validated; inadequate ones are rerouted to the general-assistant fallback
+5. **Streaming** — SSE events stream back throughout (skill matched, thoughts, tool calls, plan steps, response)
 
 ## Prerequisites
 
@@ -70,11 +70,21 @@ The UI provides a chat interface and a skills management page for creating, upda
 
 ## Skills
 
-Skills define how the agent handles different types of requests. Each skill has a name, description, system prompt, and a list of tools. When a user sends a message, it is embedded and matched to the most relevant skill via semantic similarity search against skill descriptions.
+Skills define how the agent handles different types of requests. Each skill has a name, description, system prompt, and a list of tools. When a user sends a message, it is routed to the most relevant skill via the [routing cascade](#skill-routing) described below.
 
 A `general-assistant` skill is seeded on first startup. To create additional skills, use the skills management page in the UI or the REST API. System prompts should be written in markdown.
 
 All skills use multistep planning — the agent decomposes the request into steps, executes each with the skill's tools, then synthesizes the results. Simple requests produce single-step plans and skip per-step overhead.
+
+### Skill Routing
+
+Messages are routed through a cascade of strategies:
+
+1. **Name mention** — if the message contains a skill name (case-insensitive, ignoring hyphens/underscores), that skill is used directly
+2. **Embedding similarity** — the message is embedded via OpenAI text-embedding-3-small (1536-dim) and matched against skill embeddings in pgvector; the highest-scoring non-fallback skill wins
+3. **Context retry** — if the best match is the fallback skill with a score below the configured threshold (default 0.6) and conversation history exists, the last agent message is prepended to the query, and similarity search is retried — this handles terse follow-ups like "yes" or "do it" that lack semantic content on their own
+4. **Fallback** — if no better match is found, the `general-assistant` skill handles the request
+5. **Response validation reroute** — after a specialist skill responds, a light model (Claude Haiku) classifies the response as adequate or inadequate; if the skill deflected or failed to answer, the request is automatically rerouted to the `general-assistant` fallback for a second attempt
 
 ## Tools
 
