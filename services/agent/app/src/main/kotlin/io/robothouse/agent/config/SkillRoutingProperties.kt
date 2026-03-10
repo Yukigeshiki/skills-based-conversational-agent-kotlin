@@ -8,13 +8,14 @@ import org.springframework.validation.annotation.Validated
 /**
  * Configuration properties for skill routing via embedding similarity.
  *
- * Controls context-aware routing behaviour and the similarity threshold
- * below which a fallback match triggers a context retry.
+ * Controls the minimum similarity score required for a skill match.
+ * When the fallback skill wins the match and conversation history is
+ * available, a context retry is attempted automatically.
  */
 @Validated
 @ConfigurationProperties(prefix = "skill.routing")
 data class SkillRoutingProperties(
-    @field:DecimalMin("0.0", message = "contextRetryThreshold must be >= 0.0")
-    @field:DecimalMax("1.0", message = "contextRetryThreshold must be <= 1.0")
-    val contextRetryThreshold: Double = 0.6
+    @field:DecimalMin("0.0", message = "minSimilarityThreshold must be >= 0.0")
+    @field:DecimalMax("1.0", message = "minSimilarityThreshold must be <= 1.0")
+    val minSimilarityThreshold: Double
 )

@@ -31,7 +31,7 @@ class SkillRouterServiceTest {
     private val embeddingModel: EmbeddingModel = mock()
     private val embeddingStore: EmbeddingStore<TextSegment> = mock()
     private val skillRepository: SkillRepository = mock()
-    private val properties = SkillRoutingProperties(contextRetryThreshold = 0.6)
+    private val properties = SkillRoutingProperties(minSimilarityThreshold = 0.63)
 
     private val routerService = SkillRouterService(embeddingModel, embeddingStore, skillRepository, properties)
 
@@ -96,14 +96,17 @@ class SkillRouterServiceTest {
     }
 
     @Test
-    fun `returns fallback when it scores above threshold`() {
+    fun `retries with context when fallback matches and history exists`() {
         val fallbackId = UUID.randomUUID()
         val fallbackSkill = Skill(id = fallbackId, name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
 
         whenever(embeddingModel.embed(any<String>())).thenReturn(Response(embedding))
         val segment = TextSegment.from("general", Metadata.from("skillId", fallbackId.toString()))
         val match = EmbeddingMatch(0.75, "1", embedding, segment)
-        whenever(embeddingStore.search(any<EmbeddingSearchRequest>())).thenReturn(EmbeddingSearchResult(listOf(match)))
+        // Both passes return fallback — context retry doesn't find a better match
+        whenever(embeddingStore.search(any<EmbeddingSearchRequest>()))
+            .thenReturn(EmbeddingSearchResult(listOf(match)))
+            .thenReturn(EmbeddingSearchResult(listOf(match)))
         whenever(skillRepository.findById(fallbackId)).thenReturn(Optional.of(fallbackSkill))
 
         val history = listOf(
@@ -114,8 +117,8 @@ class SkillRouterServiceTest {
         val result = routerService.route("thanks", history)
 
         assertEquals("general-assistant", result.name)
-        // No context retry — score is above threshold
-        verify(embeddingModel, times(1)).embed(any<String>())
+        // Context retry attempted since fallback matched with history
+        verify(embeddingModel, times(2)).embed(any<String>())
     }
 
     @Test
@@ -143,7 +146,7 @@ class SkillRouterServiceTest {
     }
 
     @Test
-    fun `retries with context when fallback scores below threshold`() {
+    fun `retries with context when fallback matches and finds specialist`() {
         val fallbackId = UUID.randomUUID()
         val fallbackSkill = Skill(id = fallbackId, name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
         val specialistId = UUID.randomUUID()
@@ -156,9 +159,9 @@ class SkillRouterServiceTest {
         whenever(embeddingModel.embed(any<String>())).thenReturn(Response(embedding))
 
         val fallbackSegment = TextSegment.from("general", Metadata.from("skillId", fallbackId.toString()))
-        val fallbackMatch = EmbeddingMatch(0.4, "1", embedding, fallbackSegment)
+        val fallbackMatch = EmbeddingMatch(0.7, "1", embedding, fallbackSegment)
         val specialistSegment = TextSegment.from("time help", Metadata.from("skillId", specialistId.toString()))
-        val specialistMatch = EmbeddingMatch(0.8, "2", embedding, specialistSegment)
+        val specialistMatch = EmbeddingMatch(0.85, "2", embedding, specialistSegment)
 
         whenever(embeddingStore.search(any<EmbeddingSearchRequest>()))
             .thenReturn(EmbeddingSearchResult(listOf(fallbackMatch)))
@@ -195,13 +198,57 @@ class SkillRouterServiceTest {
     }
 
     @Test
+    fun `falls back when score is below minimum similarity threshold`() {
+        val skillId = UUID.randomUUID()
+        val fallbackSkill = Skill(name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
+
+        whenever(embeddingModel.embed(any<String>())).thenReturn(Response(embedding))
+        val segment = TextSegment.from("time help", Metadata.from("skillId", skillId.toString()))
+        val match = EmbeddingMatch(0.5, "1", embedding, segment)
+        whenever(embeddingStore.search(any<EmbeddingSearchRequest>())).thenReturn(EmbeddingSearchResult(listOf(match)))
+        whenever(skillRepository.findByName("general-assistant")).thenReturn(fallbackSkill)
+
+        val result = routerService.route("something vague")
+
+        assertEquals("general-assistant", result.name)
+    }
+
+    @Test
+    fun `retries with context when score is below threshold and history exists`() {
+        val specialistId = UUID.randomUUID()
+        val specialistSkill = Skill(id = specialistId, name = "datetime-assistant", description = "time help", systemPrompt = "prompt", toolNames = listOf("DateTimeTool"))
+        val history = listOf(
+            ConversationMessage(role = "user", content = "What time is it in Tokyo?"),
+            ConversationMessage(role = "assistant", content = "It is 3:00 PM in Tokyo.")
+        )
+
+        whenever(embeddingModel.embed(any<String>())).thenReturn(Response(embedding))
+
+        // First pass: terse message scores below min threshold — findTopSkill returns null
+        val lowMatch = EmbeddingMatch(0.3, "1", embedding, TextSegment.from("time help", Metadata.from("skillId", specialistId.toString())))
+        // Second pass: context-enriched query scores above threshold
+        val specialistSegment = TextSegment.from("time help", Metadata.from("skillId", specialistId.toString()))
+        val specialistMatch = EmbeddingMatch(0.85, "2", embedding, specialistSegment)
+
+        whenever(embeddingStore.search(any<EmbeddingSearchRequest>()))
+            .thenReturn(EmbeddingSearchResult(listOf(lowMatch)))
+            .thenReturn(EmbeddingSearchResult(listOf(specialistMatch)))
+        whenever(skillRepository.findById(specialistId)).thenReturn(Optional.of(specialistSkill))
+
+        val result = routerService.route("yes", history)
+
+        assertEquals("datetime-assistant", result.name)
+        verify(embeddingModel, times(2)).embed(any<String>())
+    }
+
+    @Test
     fun `does not retry with context when history is empty`() {
         val fallbackId = UUID.randomUUID()
         val fallbackSkill = Skill(id = fallbackId, name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
 
         whenever(embeddingModel.embed(any<String>())).thenReturn(Response(embedding))
         val segment = TextSegment.from("general", Metadata.from("skillId", fallbackId.toString()))
-        val match = EmbeddingMatch(0.3, "1", embedding, segment)
+        val match = EmbeddingMatch(0.7, "1", embedding, segment)
         whenever(embeddingStore.search(any<EmbeddingSearchRequest>())).thenReturn(EmbeddingSearchResult(listOf(match)))
         whenever(skillRepository.findById(fallbackId)).thenReturn(Optional.of(fallbackSkill))
 
@@ -223,7 +270,7 @@ class SkillRouterServiceTest {
 
         whenever(embeddingModel.embed(any<String>())).thenReturn(Response(embedding))
         val segment = TextSegment.from("general", Metadata.from("skillId", fallbackId.toString()))
-        val match = EmbeddingMatch(0.3, "1", embedding, segment)
+        val match = EmbeddingMatch(0.7, "1", embedding, segment)
         whenever(embeddingStore.search(any<EmbeddingSearchRequest>())).thenReturn(EmbeddingSearchResult(listOf(match)))
         whenever(skillRepository.findById(fallbackId)).thenReturn(Optional.of(fallbackSkill))
 

@@ -16,10 +16,10 @@ import java.util.UUID
 /**
  * Routes user messages to the most relevant skill using embedding similarity search.
  *
- * Always picks the highest-scoring skill. If that skill is the fallback and the
- * score is below [SkillRoutingProperties.contextRetryThreshold], retries with
- * recent user messages prepended so that terse follow-ups like "yes" inherit the
- * conversation's semantic context.
+ * Picks the highest-scoring skill above [SkillRoutingProperties.minSimilarityThreshold].
+ * If the fallback skill wins and conversation history is available, retries with recent
+ * messages prepended so that terse follow-ups like "yes" inherit the conversation's
+ * semantic context.
  */
 @Service
 class SkillRouterService(
@@ -40,9 +40,9 @@ class SkillRouterService(
      *
      * First checks if the user explicitly mentions a skill by name. If so, routes
      * directly to that skill. Otherwise, routes to the highest-scoring skill via
-     * embedding similarity. If the best match is the fallback skill with a score
-     * below the context retry threshold and conversation history is available,
-     * retries with context from recent user messages.
+     * embedding similarity, requiring a minimum similarity score. If the fallback
+     * skill wins and conversation history is available, retries with context from
+     * recent messages.
      */
     fun route(userMessage: String, conversationHistory: List<ConversationMessage> = emptyList()): Skill {
         log.debug { "Routing message to skill" }
@@ -59,17 +59,9 @@ class SkillRouterService(
             return directMatch.skill
         }
 
-        val shouldRetryWithContext = directMatch != null
-            && directMatch.skill.name == FALLBACK_SKILL_NAME
-            && directMatch.score < properties.contextRetryThreshold
-            && conversationHistory.isNotEmpty()
-
-        if (shouldRetryWithContext) {
+        if ((directMatch == null || directMatch.skill.name == FALLBACK_SKILL_NAME) && conversationHistory.isNotEmpty()) {
             val contextualQuery = buildContextualQuery(userMessage, conversationHistory)
-            log.debug {
-                "Pass 2 — fallback score ${directMatch.score} below threshold " +
-                    "${properties.contextRetryThreshold}, retrying with context:\n$contextualQuery"
-            }
+            log.debug { "Pass 2 — fallback matched, retrying with context:\n$contextualQuery" }
             val contextMatch = findTopSkill(contextualQuery)
             if (contextMatch != null) return contextMatch.skill
         }
@@ -133,6 +125,11 @@ class SkillRouterService(
         }
 
         log.debug { "Top embedding match — score: ${topMatch.score()}, segment: \"${topMatch.embedded()?.text()}\"" }
+
+        if (topMatch.score() < properties.minSimilarityThreshold) {
+            log.debug { "Top match score ${topMatch.score()} below minimum threshold ${properties.minSimilarityThreshold}" }
+            return null
+        }
 
         val skill = topMatch.let { match ->
             val skillIdStr = match.embedded()?.metadata()?.getString("skillId") ?: return@let null
