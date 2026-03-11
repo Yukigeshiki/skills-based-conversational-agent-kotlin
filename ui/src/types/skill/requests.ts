@@ -13,6 +13,7 @@ export interface CreateSkillRequest {
   name: string
   description: string
   systemPrompt: string
+  responseTemplate?: string
   toolNames: string[]
 }
 
@@ -21,5 +22,6 @@ export interface UpdateSkillRequest {
   name?: string
   description?: string
   systemPrompt?: string
+  responseTemplate?: string
   toolNames?: string[]
 }

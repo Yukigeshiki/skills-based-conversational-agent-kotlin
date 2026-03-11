@@ -2,7 +2,7 @@ package io.robothouse.agent.controller
 
 import io.robothouse.agent.entity.Skill
 import io.robothouse.agent.model.GetPagedResponse
-import io.robothouse.agent.model.SkillRequest
+import io.robothouse.agent.model.CreateSkillRequest
 import io.robothouse.agent.model.UpdateSkillRequest
 import io.robothouse.agent.service.SkillService
 import io.robothouse.agent.validator.ValidSortParam
@@ -123,7 +123,7 @@ class SkillController(
         ]
     )
     @PostMapping
-    fun create(@RequestBody @Valid request: SkillRequest): ResponseEntity<Skill> {
+    fun create(@RequestBody @Valid request: CreateSkillRequest): ResponseEntity<Skill> {
         val saved = skillService.create(request)
         return ResponseEntity.status(HttpStatus.CREATED).body(saved)
     }

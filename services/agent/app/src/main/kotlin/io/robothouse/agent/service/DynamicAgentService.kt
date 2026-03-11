@@ -58,6 +58,7 @@ class DynamicAgentService(
     ): AgentResponse {
         log.debug { "Processing chat request for skill: name=${skill.name}, tools=${skill.toolNames}" }
 
+        val effectiveSystemPrompt = buildSystemPrompt(skill)
         val specifications = toolRepository.getSpecificationsByNames(skill.toolNames)
         val executors = toolRepository.getExecutorsByNames(skill.toolNames)
 
@@ -67,7 +68,7 @@ class DynamicAgentService(
 
         if (plan.steps.size <= 1) {
             val response = executeStep(
-                skill.systemPrompt,
+                effectiveSystemPrompt,
                 userMessage,
                 specifications,
                 executors,
@@ -116,7 +117,7 @@ class DynamicAgentService(
 
             try {
                 val stepResponse = executeStep(
-                    skill.systemPrompt, priorContext, specifications, executors, skill.name, listener, emitFinalResponse = false
+                    effectiveSystemPrompt, priorContext, specifications, executors, skill.name, listener, emitFinalResponse = false
                 )
                 allToolSteps.addAll(stepResponse.steps)
                 val stepResult = PlanStepResult(
@@ -155,7 +156,7 @@ class DynamicAgentService(
         }
 
         log.debug { "Synthesizing results for ${stepResults.size} plan steps" }
-        val synthesisResponse = synthesizeResults(skill.systemPrompt, userMessage, stepResults)
+        val synthesisResponse = synthesizeResults(effectiveSystemPrompt, userMessage, stepResults)
 
         log.info { "Completed planned chat for skill: name=${skill.name}, steps=${plan.steps.size}, toolExecutions=${allToolSteps.size}" }
         val agentResponse = AgentResponse(
@@ -169,6 +170,16 @@ class DynamicAgentService(
         )
         emitEvent(listener) { AgentEvent.FinalResponseEvent(response = agentResponse.response, skill = agentResponse.skill) }
         return agentResponse
+    }
+
+    /**
+     * Builds the effective system prompt for a skill by appending the response template
+     * section when one is defined.
+     */
+    private fun buildSystemPrompt(skill: Skill): String {
+        val template = skill.responseTemplate
+        if (template.isNullOrBlank()) return skill.systemPrompt
+        return "${skill.systemPrompt}\n\n## Response Template\nUse the following template to structure your response:\n$template"
     }
 
     /**

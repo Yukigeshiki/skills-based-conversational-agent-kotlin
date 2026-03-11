@@ -577,6 +577,57 @@ class DynamicAgentServiceTest {
     }
 
     @Test
+    fun `includes response template in system prompt when present`() {
+        whenever(toolRepository.getSpecificationsByNames(any())).thenReturn(emptyList())
+        whenever(toolRepository.getExecutorsByNames(any())).thenReturn(emptyMap())
+
+        val skillWithTemplate = Skill(
+            name = "template-skill",
+            description = "test",
+            systemPrompt = "You are a test assistant.",
+            responseTemplate = "Subject: ...\nBody: ...",
+            toolNames = emptyList()
+        )
+
+        val capturedSystemMessages = mutableListOf<String>()
+        val model = object : ChatModel {
+            override fun doChat(request: ChatRequest): ChatResponse {
+                val sysMsg = request.messages().filterIsInstance<SystemMessage>().first().text()
+                capturedSystemMessages.add(sysMsg)
+                return ChatResponse.builder().aiMessage(AiMessage.from("Done")).build()
+            }
+        }
+        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
+
+        service.chat(skillWithTemplate, "Write an email")
+
+        assertEquals(1, capturedSystemMessages.size)
+        assertTrue(capturedSystemMessages[0].contains("## Response Template"))
+        assertTrue(capturedSystemMessages[0].contains("Subject: ...\nBody: ..."))
+    }
+
+    @Test
+    fun `does not include response template section when template is null`() {
+        whenever(toolRepository.getSpecificationsByNames(any())).thenReturn(emptyList())
+        whenever(toolRepository.getExecutorsByNames(any())).thenReturn(emptyMap())
+
+        val capturedSystemMessages = mutableListOf<String>()
+        val model = object : ChatModel {
+            override fun doChat(request: ChatRequest): ChatResponse {
+                val sysMsg = request.messages().filterIsInstance<SystemMessage>().first().text()
+                capturedSystemMessages.add(sysMsg)
+                return ChatResponse.builder().aiMessage(AiMessage.from("Done")).build()
+            }
+        }
+        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
+
+        service.chat(skill, "Hello")
+
+        assertEquals(1, capturedSystemMessages.size)
+        assertTrue(!capturedSystemMessages[0].contains("## Response Template"))
+    }
+
+    @Test
     fun `injects scratchpad into system message on iteration 2+`() {
         val toolSpec = ToolSpecification.builder().name("myTool").description("A tool").build()
         whenever(toolRepository.getSpecificationsByNames(any())).thenReturn(listOf(toolSpec))

@@ -8,7 +8,7 @@ import dev.langchain4j.store.embedding.EmbeddingStore
 import io.robothouse.agent.entity.Skill
 import io.robothouse.agent.exception.BadRequestException
 import io.robothouse.agent.exception.NotFoundException
-import io.robothouse.agent.model.SkillRequest
+import io.robothouse.agent.model.CreateSkillRequest
 import io.robothouse.agent.model.UpdateSkillRequest
 import io.robothouse.agent.repository.SkillRepository
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -46,6 +46,7 @@ class SkillServiceTest {
         name = "test-skill",
         description = "A test skill",
         systemPrompt = "You are a test assistant.",
+        responseTemplate = null,
         toolNames = listOf("TestTool")
     )
 
@@ -58,6 +59,9 @@ class SkillServiceTest {
             val callback = invocation.getArgument<org.springframework.transaction.support.TransactionCallback<Any>>(0)
             callback.doInTransaction(mock())
         }
+
+        // Default: skill is found and not protected
+        whenever(skillRepository.findById(skillId)).thenReturn(Optional.of(skill))
     }
 
     @Test
@@ -130,7 +134,7 @@ class SkillServiceTest {
 
     @Test
     fun `create saves skill and embeds description`() {
-        val request = SkillRequest(
+        val request = CreateSkillRequest(
             name = "new-skill",
             description = "A new skill",
             systemPrompt = "System prompt",
@@ -151,8 +155,30 @@ class SkillServiceTest {
     }
 
     @Test
+    fun `create with responseTemplate flows through to saved entity`() {
+        val request = CreateSkillRequest(
+            name = "template-skill",
+            description = "A skill with template",
+            systemPrompt = "System prompt",
+            responseTemplate = "Subject: ...\nBody: ...",
+            toolNames = listOf("TestTool")
+        )
+        val embedding = Embedding(FloatArray(384) { 0.1f })
+
+        whenever(skillRepository.findByName("template-skill")).thenReturn(null)
+        whenever(skillRepository.save(any<Skill>())).thenAnswer { it.getArgument<Skill>(0).apply { id = skillId } }
+        whenever(embeddingModel.embed(any<String>())).thenReturn(Response(embedding))
+
+        service.create(request)
+
+        verify(skillRepository).save(argThat<Skill> { saved ->
+            saved.responseTemplate == "Subject: ...\nBody: ..."
+        })
+    }
+
+    @Test
     fun `create throws BadRequestException when name already exists`() {
-        val request = SkillRequest(
+        val request = CreateSkillRequest(
             name = "test-skill",
             description = "A new skill",
             systemPrompt = "System prompt"
@@ -231,7 +257,7 @@ class SkillServiceTest {
     fun `update throws NotFoundException when skill not found`() {
         val request = UpdateSkillRequest(name = "renamed-skill")
 
-        whenever(skillRepository.patchUpdate(skillId, request)).thenReturn(null)
+        whenever(skillRepository.findById(skillId)).thenReturn(Optional.empty())
 
         assertThrows<NotFoundException> {
             service.update(skillId, request)
@@ -240,8 +266,6 @@ class SkillServiceTest {
 
     @Test
     fun `delete removes embedding and deletes skill`() {
-        whenever(skillRepository.existsById(skillId)).thenReturn(true)
-
         service.delete(skillId)
 
         verify(embeddingStore).removeAll(any<Filter>())
@@ -250,7 +274,7 @@ class SkillServiceTest {
 
     @Test
     fun `delete throws NotFoundException when skill not found`() {
-        whenever(skillRepository.existsById(skillId)).thenReturn(false)
+        whenever(skillRepository.findById(skillId)).thenReturn(Optional.empty())
 
         assertThrows<NotFoundException> {
             service.delete(skillId)
@@ -261,8 +285,43 @@ class SkillServiceTest {
     }
 
     @Test
+    fun `update throws BadRequestException when skill is protected`() {
+        val protectedSkill = Skill(
+            id = skillId,
+            name = "general-assistant",
+            description = "A test skill",
+            systemPrompt = "You are a test assistant.",
+            isProtected = true
+        )
+        whenever(skillRepository.findById(skillId)).thenReturn(Optional.of(protectedSkill))
+
+        assertThrows<BadRequestException> {
+            service.update(skillId, UpdateSkillRequest(name = "renamed"))
+        }
+    }
+
+    @Test
+    fun `delete throws BadRequestException when skill is protected`() {
+        val protectedSkill = Skill(
+            id = skillId,
+            name = "general-assistant",
+            description = "A test skill",
+            systemPrompt = "You are a test assistant.",
+            isProtected = true
+        )
+        whenever(skillRepository.findById(skillId)).thenReturn(Optional.of(protectedSkill))
+
+        assertThrows<BadRequestException> {
+            service.delete(skillId)
+        }
+
+        verify(embeddingStore, never()).removeAll(any<Filter>())
+        verify(skillRepository, never()).deleteById(any<UUID>())
+    }
+
+    @Test
     fun `create embeds with correct metadata`() {
-        val request = SkillRequest(
+        val request = CreateSkillRequest(
             name = "new-skill",
             description = "A new skill",
             systemPrompt = "System prompt"

@@ -9,7 +9,7 @@ import jakarta.validation.constraints.Size
 /**
  * Request body for creating a new skill with required configuration fields.
  */
-data class SkillRequest(
+data class CreateSkillRequest(
     @field:NotBlank(message = "Name must not be blank")
     @field:Size(max = 64, message = "Name must not exceed 64 characters")
     @field:Pattern(regexp = "^[a-zA-Z0-9_-]+$", message = "Name must contain only alphanumeric characters, hyphens, or underscores")
@@ -22,6 +22,10 @@ data class SkillRequest(
     @field:NotBlank(message = "System prompt must not be blank")
     @field:MaxTokens(1000, message = "System prompt must not exceed 1000 tokens")
     val systemPrompt: String,
+
+    @field:Size(max = 4000, message = "Response template must not exceed 4000 characters")
+    @field:MaxTokens(1000, message = "Response template must not exceed 1000 tokens")
+    val responseTemplate: String? = null,
 
     @field:Size(max = 10, message = "Tool names must not exceed 10 entries")
     @field:RegisteredTools

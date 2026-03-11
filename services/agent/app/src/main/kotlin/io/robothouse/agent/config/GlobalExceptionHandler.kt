@@ -23,13 +23,11 @@ class GlobalExceptionHandler {
 
     @ExceptionHandler(BadRequestException::class)
     fun handleBadRequestException(e: BadRequestException): ResponseEntity<ProblemDetail> {
-        log.warn { "Bad request: ${e.message}" }
         return buildResponse(e.message, e.status)
     }
 
     @ExceptionHandler(NotFoundException::class)
     fun handleNotFoundException(e: NotFoundException): ResponseEntity<ProblemDetail> {
-        log.warn { "Not found: ${e.message}" }
         return buildResponse(e.message, e.status)
     }
 

@@ -4,6 +4,8 @@ export interface Skill {
   name: string
   description: string
   systemPrompt: string
+  responseTemplate: string | null
+  isProtected: boolean
   toolNames: string[]
   createdAt: string
   updatedAt: string

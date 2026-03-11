@@ -34,6 +34,12 @@ class Skill(
     @Column(name = "system_prompt", nullable = false, length = MAX_SYSTEM_PROMPT_LENGTH)
     var systemPrompt: String = "",
 
+    @Column(name = "response_template", length = MAX_RESPONSE_TEMPLATE_LENGTH)
+    var responseTemplate: String? = null,
+
+    @Column(name = "protected", nullable = false)
+    var isProtected: Boolean = false,
+
     @Column(name = "tool_names", nullable = false)
     @Convert(converter = StringListConverter::class)
     var toolNames: List<String> = emptyList(),
@@ -59,5 +65,6 @@ class Skill(
     companion object {
         const val MAX_DESCRIPTION_LENGTH = 1000
         const val MAX_SYSTEM_PROMPT_LENGTH = 4000
+        const val MAX_RESPONSE_TEMPLATE_LENGTH = 4000
     }
 }

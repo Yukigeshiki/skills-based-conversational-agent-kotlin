@@ -34,7 +34,7 @@
         </div>
         <div class="space-y-2">
           <div class="flex items-center justify-between">
-            <Label for="skill-system-prompt">System Prompt (should be between 500-1000 tokens for best results)</Label>
+            <Label for="skill-system-prompt">System Prompt (max 1000 tokens)</Label>
             <PreviewToggleButton :previewing="systemPromptPreview" @toggle="systemPromptPreview = !systemPromptPreview" />
           </div>
           <Textarea
@@ -45,6 +45,20 @@
             rows="12"
           />
           <div v-show="systemPromptPreview" class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3" style="min-height: 18rem; max-height: 18rem;" v-html="renderMarkdown(form.systemPrompt)" />
+        </div>
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <Label for="skill-response-template">Response Template (optional, max 1000 tokens)</Label>
+            <PreviewToggleButton :previewing="responseTemplatePreview" @toggle="responseTemplatePreview = !responseTemplatePreview" />
+          </div>
+          <Textarea
+            v-show="!responseTemplatePreview"
+            id="skill-response-template"
+            v-model="form.responseTemplate"
+            placeholder="Define a template for how this skill should structure responses"
+            rows="8"
+          />
+          <div v-show="responseTemplatePreview" class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3" style="min-height: 12rem; max-height: 12rem;" v-html="renderMarkdown(form.responseTemplate)" />
         </div>
 
         <div v-if="validationError" class="text-sm text-destructive">{{ validationError }}</div>
@@ -108,10 +122,12 @@ const form = reactive({
   name: '',
   description: '',
   systemPrompt: '',
+  responseTemplate: '',
   toolNames: [] as string[],
 })
 
 const systemPromptPreview = ref(false)
+const responseTemplatePreview = ref(false)
 const validationError = ref('')
 const loading = ref(false)
 
@@ -119,8 +135,10 @@ function resetForm() {
   form.name = ''
   form.description = ''
   form.systemPrompt = ''
+  form.responseTemplate = ''
   form.toolNames = []
   systemPromptPreview.value = false
+  responseTemplatePreview.value = false
   validationError.value = ''
 }
 
@@ -136,6 +154,7 @@ watch(open, async (isOpen) => {
       form.name = skill.name
       form.description = skill.description
       form.systemPrompt = skill.systemPrompt
+      form.responseTemplate = skill.responseTemplate ?? ''
       form.toolNames = [...skill.toolNames]
     } catch {
       open.value = false
@@ -159,6 +178,7 @@ function handleSubmit() {
     name: form.name,
     description: form.description,
     systemPrompt: form.systemPrompt,
+    responseTemplate: form.responseTemplate.trim() || undefined,
     toolNames: [...form.toolNames],
   }
 

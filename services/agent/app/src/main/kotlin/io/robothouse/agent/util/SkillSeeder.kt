@@ -53,7 +53,8 @@ class SkillSeeder(
                     |- **Use tools** — leverage available tools when they can help answer the question
                     |- **Be helpful** — if you can't answer directly, suggest next steps
                 """.trimMargin(),
-                toolNames = listOf("DateTimeTool")
+                toolNames = listOf("DateTimeTool"),
+                isProtected = true
             )
         )
 

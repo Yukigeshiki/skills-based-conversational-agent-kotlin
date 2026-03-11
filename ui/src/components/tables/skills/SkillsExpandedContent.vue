@@ -6,7 +6,7 @@
     <div v-if="skill" class="space-y-4">
       <div class="max-w-4xl space-y-4">
         <!-- Details section -->
-        <CollapsibleSection title="Details" :default-expanded="true" show-edit @edit="$emit('edit', skill.id)">
+        <CollapsibleSection title="Details" :default-expanded="true" :show-edit="!skill.isProtected" @edit="$emit('edit', skill.id)">
           <dl class="space-y-1 text-sm">
             <div class="flex gap-1">
               <dt class="text-muted-foreground w-32 shrink-0">Name:</dt>
@@ -30,6 +30,11 @@
         <!-- System Prompt section -->
         <CollapsibleSection title="System Prompt" :default-expanded="false">
           <div class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded border p-4 max-h-64" v-html="renderMarkdown(skill.systemPrompt)" />
+        </CollapsibleSection>
+
+        <!-- Response Template section -->
+        <CollapsibleSection v-if="skill.responseTemplate" title="Response Template" :default-expanded="false">
+          <div class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded border p-4 max-h-64" v-html="renderMarkdown(skill.responseTemplate)" />
         </CollapsibleSection>
 
         <!-- Tools section -->
@@ -57,7 +62,7 @@
       </div>
 
       <!-- Danger Zone -->
-      <div class="relative pt-4 mt-4 border-t border-destructive/20">
+      <div v-if="!skill.isProtected" class="relative pt-4 mt-4 border-t border-destructive/20">
         <div class="flex items-center justify-between">
           <div>
             <h3 class="font-semibold text-destructive">Danger Zone</h3>

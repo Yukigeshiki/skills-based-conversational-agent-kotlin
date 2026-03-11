@@ -25,7 +25,11 @@ data class UpdateSkillRequest(
     @field:MaxTokens(1000, message = "System prompt must not exceed 1000 tokens")
     val systemPrompt: String? = null,
 
+    @field:Size(max = 4000, message = "Response template must not exceed 4000 characters")
+    @field:MaxTokens(1000, message = "Response template must not exceed 1000 tokens")
+    val responseTemplate: String? = null,
+
     @field:Size(max = 10, message = "Tool names must not exceed 10 entries")
     @field:RegisteredTools
-    val toolNames: List<@Pattern(regexp = "^[a-zA-Z][a-zA-Z0-9]*$", message = "Tool name must be camelCase alphanumeric") String> = emptyList()
+    val toolNames: List<@Pattern(regexp = "^[a-zA-Z][a-zA-Z0-9]*$", message = "Tool name must be camelCase alphanumeric") String>? = null
 )

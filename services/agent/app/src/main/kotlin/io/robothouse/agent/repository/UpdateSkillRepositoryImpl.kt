@@ -33,6 +33,10 @@ class UpdateSkillRepositoryImpl(
             setClauses.add("s.systemPrompt = :systemPrompt")
             params["systemPrompt"] = it
         }
+        request.responseTemplate?.let {
+            setClauses.add("s.responseTemplate = :responseTemplate")
+            params["responseTemplate"] = it
+        }
         request.toolNames?.let {
             setClauses.add("s.toolNames = :toolNames")
             params["toolNames"] = it

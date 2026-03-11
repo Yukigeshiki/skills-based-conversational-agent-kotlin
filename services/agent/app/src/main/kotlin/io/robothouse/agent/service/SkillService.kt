@@ -8,7 +8,7 @@ import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder.metadataKey
 import io.robothouse.agent.entity.Skill
 import io.robothouse.agent.exception.BadRequestException
 import io.robothouse.agent.exception.NotFoundException
-import io.robothouse.agent.model.SkillRequest
+import io.robothouse.agent.model.CreateSkillRequest
 import io.robothouse.agent.model.UpdateSkillRequest
 import io.robothouse.agent.repository.SkillRepository
 import io.robothouse.agent.util.log
@@ -63,7 +63,7 @@ class SkillService(
      * rare case that the DB commit fails after the embedding succeeds, the orphaned
      * embedding is harmless and will be cleaned up by reconciliation on next startup.
      */
-    fun create(request: SkillRequest): Skill {
+    fun create(request: CreateSkillRequest): Skill {
         log.debug { "Processing create request for skill: name=${request.name}" }
 
         val saved = transactionTemplate.execute {
@@ -75,6 +75,7 @@ class SkillService(
                 name = request.name,
                 description = request.description,
                 systemPrompt = request.systemPrompt,
+                responseTemplate = request.responseTemplate,
                 toolNames = request.toolNames
             )
             val persisted = skillRepository.save(skill)
@@ -97,6 +98,15 @@ class SkillService(
         log.debug { "Processing update request for skill: id=$id" }
 
         val saved = transactionTemplate.execute {
+            // Step 0: Check if the skill is protected
+            val existing = skillRepository.findById(id).orElseThrow {
+                log.warn { "Attempt to update non-existent skill: id=$id" }
+                NotFoundException("Skill not found")
+            }
+            if (existing.isProtected) {
+                throw BadRequestException("Protected skills cannot be modified")
+            }
+
             // Step 1: Execute partial update
             val persisted = skillRepository.patchUpdate(id, request)
                 ?: run {
@@ -127,9 +137,12 @@ class SkillService(
         log.debug { "Processing delete request for skill: id=$id" }
 
         transactionTemplate.execute {
-            if (!skillRepository.existsById(id)) {
+            val existing = skillRepository.findById(id).orElseThrow {
                 log.warn { "Attempt to delete non-existent skill: id=$id" }
-                throw NotFoundException("Skill not found")
+                NotFoundException("Skill not found")
+            }
+            if (existing.isProtected) {
+                throw BadRequestException("Protected skills cannot be deleted")
             }
 
             removeEmbeddingsBySkillId(id.toString())
