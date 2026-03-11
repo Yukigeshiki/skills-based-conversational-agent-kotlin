@@ -33,8 +33,9 @@
       </template>
 
       <template v-else-if="event.type === 'plan_step_completed'">
-        <span :class="event.status === 'FAILED' ? 'text-destructive' : ''">
-          Step {{ event.stepNumber }} {{ event.status === 'COMPLETED' ? 'completed' : 'failed' }}
+        <span :class="event.status === 'FAILED' ? 'text-destructive' : event.status === 'SKIPPED' ? 'text-muted-foreground/60' : ''">
+          Step {{ event.stepNumber }}
+          {{ event.status === 'COMPLETED' ? 'completed' : event.status === 'SKIPPED' ? 'skipped' : 'failed' }}
         </span>
       </template>
 

@@ -80,8 +80,28 @@ class DynamicAgentService(
 
         val stepResults = mutableListOf<PlanStepResult>()
         val allToolSteps = mutableListOf<ToolExecutionStep>()
+        var failed = false
 
         for (planStep in plan.steps) {
+            if (failed) {
+                log.debug { "Skipping plan step ${planStep.stepNumber} due to earlier failure" }
+                stepResults.add(
+                    PlanStepResult(
+                        step = planStep,
+                        status = PlanStepStatus.SKIPPED,
+                        response = "Skipped due to failure of a prior step"
+                    )
+                )
+                emitEvent(listener) {
+                    AgentEvent.PlanStepCompletedEvent(
+                        stepNumber = planStep.stepNumber,
+                        status = PlanStepStatus.SKIPPED,
+                        response = "Skipped due to failure of a prior step"
+                    )
+                }
+                continue
+            }
+
             log.debug { "Executing plan step ${planStep.stepNumber}: ${planStep.description}" }
             emitEvent(listener) { AgentEvent.PlanStepStartedEvent(stepNumber = planStep.stepNumber, description = planStep.description) }
 
@@ -130,6 +150,7 @@ class DynamicAgentService(
                         response = e.message ?: "Step failed"
                     )
                 }
+                failed = true
             }
         }
 

@@ -8,6 +8,7 @@ import dev.langchain4j.store.embedding.EmbeddingStore
 import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder.metadataKey
 import io.robothouse.agent.entity.Skill
 import io.robothouse.agent.repository.SkillRepository
+import java.security.MessageDigest
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
@@ -63,7 +64,7 @@ class SkillSeeder(
                 log.warn { "Skill ID was null after save: name=${saved.name}" }
                 throw IllegalStateException("Skill ID was null after save: name=${saved.name}")
             }
-            val descriptionHash = skill.description.hashCode().toString()
+            val descriptionHash = sha256(skill.description)
             val metadata = Metadata.from("skillId", skillId).put("descriptionHash", descriptionHash)
             val segment = TextSegment.from(skill.description, metadata)
             embeddingStore.add(embedding, segment)
@@ -71,6 +72,11 @@ class SkillSeeder(
         }
 
         log.info { "Skill seeding complete" }
+    }
+
+    private fun sha256(input: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        return digest.digest(input.toByteArray()).joinToString("") { "%02x".format(it) }
     }
 
     /**
@@ -86,7 +92,7 @@ class SkillSeeder(
 
         for (skill in skills) {
             val skillId = skill.id?.toString() ?: continue
-            val descriptionHash = skill.description.hashCode().toString()
+            val descriptionHash = sha256(skill.description)
 
             val existing = embeddingStore.search(
                 EmbeddingSearchRequest.builder()

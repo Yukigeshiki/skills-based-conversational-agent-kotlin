@@ -265,6 +265,41 @@ class DynamicAgentServiceTest {
     }
 
     @Test
+    fun `skips remaining steps when a step throws an exception`() {
+        whenever(toolRepository.getSpecificationsByNames(any())).thenReturn(emptyList())
+        whenever(toolRepository.getExecutorsByNames(any())).thenReturn(emptyMap())
+
+        val multiStepPlan = TaskPlan(
+            steps = listOf(
+                PlanStep(stepNumber = 1, description = "This will throw"),
+                PlanStep(stepNumber = 2, description = "This should be skipped"),
+                PlanStep(stepNumber = 3, description = "This should also be skipped")
+            ),
+            reasoning = "Three steps"
+        )
+        whenever(taskPlanningService.createPlan(any(), any(), any())).thenReturn(multiStepPlan)
+
+        var callCount = 0
+        val model = object : ChatModel {
+            override fun doChat(request: ChatRequest): ChatResponse {
+                callCount++
+                if (callCount == 1) throw RuntimeException("LLM service unavailable")
+                return ChatResponse.builder().aiMessage(AiMessage.from("Synthesis with partial results")).build()
+            }
+        }
+        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
+
+        val result = service.chat(skill, "Do three things")
+
+        assertNotNull(result.planStepResults)
+        assertEquals(3, result.planStepResults!!.size)
+        assertEquals(PlanStepStatus.FAILED, result.planStepResults!![0].status)
+        assertEquals(PlanStepStatus.SKIPPED, result.planStepResults!![1].status)
+        assertEquals(PlanStepStatus.SKIPPED, result.planStepResults!![2].status)
+        assertEquals("Skipped due to failure of a prior step", result.planStepResults!![1].response)
+    }
+
+    @Test
     fun `captures thought when AI returns text alongside tool calls`() {
         val toolSpec = ToolSpecification.builder().name("myTool").description("A tool").build()
         whenever(toolRepository.getSpecificationsByNames(any())).thenReturn(listOf(toolSpec))

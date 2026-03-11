@@ -16,7 +16,7 @@ export interface TaskPlan {
   reasoning: string
 }
 
-export type PlanStepStatus = 'COMPLETED' | 'FAILED'
+export type PlanStepStatus = 'COMPLETED' | 'FAILED' | 'SKIPPED'
 
 export interface ConversationStartedEvent {
   type: 'conversation_started'

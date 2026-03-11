@@ -59,5 +59,5 @@ data class PlanStepResult(
  * Execution status of a plan step.
  */
 enum class PlanStepStatus {
-    COMPLETED, FAILED
+    COMPLETED, FAILED, SKIPPED
 }

@@ -12,6 +12,7 @@ import io.robothouse.agent.model.SkillRequest
 import io.robothouse.agent.model.UpdateSkillRequest
 import io.robothouse.agent.repository.SkillRepository
 import io.robothouse.agent.util.log
+import java.security.MessageDigest
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
@@ -56,6 +57,11 @@ class SkillService(
 
     /**
      * Creates a new skill and stores its description embedding for similarity routing.
+     *
+     * The embedding is stored inside the transaction so that an embedding failure
+     * rolls back the DB save. The embedding store uses its own connection, so in the
+     * rare case that the DB commit fails after the embedding succeeds, the orphaned
+     * embedding is harmless and will be cleaned up by reconciliation on next startup.
      */
     fun create(request: SkillRequest): Skill {
         log.debug { "Processing create request for skill: name=${request.name}" }
@@ -83,7 +89,9 @@ class SkillService(
     /**
      * Partially updates the skill with the given ID, applying only non-null fields.
      *
-     * Re-embeds the skill description if it was changed.
+     * Re-embeds the skill description if it was changed. Both the DB update and
+     * embedding update run inside the transaction so that an embedding failure
+     * rolls back the DB change.
      */
     fun update(id: UUID, request: UpdateSkillRequest): Skill {
         log.debug { "Processing update request for skill: id=$id" }
@@ -111,6 +119,9 @@ class SkillService(
 
     /**
      * Deletes the skill with the given ID and removes its embedding from the store.
+     *
+     * The embedding is removed inside the transaction so that a removal failure
+     * rolls back the DB delete, keeping both stores consistent.
      */
     fun delete(id: UUID) {
         log.debug { "Processing delete request for skill: id=$id" }
@@ -135,7 +146,7 @@ class SkillService(
     private fun embedSkill(skill: Skill) {
         val embeddingText = buildEmbeddingText(skill)
         val embedding = embeddingModel.embed(embeddingText).content()
-        val contentHash = embeddingText.hashCode().toString()
+        val contentHash = sha256(embeddingText)
         val metadata = Metadata.from("skillId", skill.id.toString()).put("contentHash", contentHash)
         val segment = TextSegment.from(embeddingText, metadata)
         embeddingStore.add(embedding, segment)
@@ -153,5 +164,10 @@ class SkillService(
      */
     private fun removeEmbeddingsBySkillId(skillId: String) {
         embeddingStore.removeAll(metadataKey("skillId").isEqualTo(skillId))
+    }
+
+    private fun sha256(input: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        return digest.digest(input.toByteArray()).joinToString("") { "%02x".format(it) }
     }
 }
