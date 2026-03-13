@@ -47,7 +47,7 @@
         v-show="systemPromptPreview"
         class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3"
         :style="{ minHeight: systemPromptPreviewHeight, maxHeight: systemPromptPreviewHeight }"
-        v-html="renderMarkdown(model.systemPrompt)"
+        v-html="renderedSystemPrompt"
       />
     </div>
     <div class="space-y-2">
@@ -66,7 +66,7 @@
         v-show="responseTemplatePreview"
         class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3"
         :style="{ minHeight: responseTemplatePreviewHeight, maxHeight: responseTemplatePreviewHeight }"
-        v-html="renderMarkdown(model.responseTemplate)"
+        v-html="renderedResponseTemplate"
       />
     </div>
   </div>
@@ -78,7 +78,7 @@
  */
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import { renderMarkdown } from '@/composables/ui'
+import { useRenderedMarkdown } from '@/composables/ui'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
@@ -105,6 +105,9 @@ const emit = defineEmits<{
 
 const systemPromptPreview = ref(false)
 const responseTemplatePreview = ref(false)
+
+const renderedSystemPrompt = useRenderedMarkdown(() => model.value.systemPrompt)
+const renderedResponseTemplate = useRenderedMarkdown(() => model.value.responseTemplate)
 
 const systemPromptPreviewHeight = computed(() => `${props.systemPromptRows * 1.5}rem`)
 const responseTemplatePreviewHeight = computed(() => `${props.responseTemplateRows * 1.5}rem`)

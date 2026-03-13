@@ -10,6 +10,7 @@ import io.robothouse.agent.entity.Skill
 import io.robothouse.agent.exception.NotFoundException
 import io.robothouse.agent.model.ConversationMessage
 import io.robothouse.agent.repository.SkillRepository
+import io.robothouse.agent.util.SkillSeeder
 import io.robothouse.agent.util.log
 import org.springframework.stereotype.Service
 import java.util.UUID
@@ -27,11 +28,12 @@ class SkillRouterService(
     private val embeddingModel: EmbeddingModel,
     private val embeddingStore: EmbeddingStore<TextSegment>,
     private val skillRepository: SkillRepository,
+    private val skillCacheService: SkillCacheService,
     private val properties: SkillRoutingProperties
 ) {
 
     companion object {
-        const val FALLBACK_SKILL_NAME = "general-assistant"
+        const val FALLBACK_SKILL_NAME = SkillSeeder.FALLBACK_SKILL_NAME
     }
 
     private data class ScoredSkill(val skill: Skill, val score: Double)
@@ -94,7 +96,7 @@ class SkillRouterService(
      */
     private fun findSkillByNameMention(userMessage: String): Skill? {
         val normalizedMessage = userMessage.normalize()
-        return skillRepository.findAll()
+        return skillCacheService.findAll()
             .filter { it.name != FALLBACK_SKILL_NAME }
             .find { normalizedMessage.contains(it.name.normalize()) }
     }

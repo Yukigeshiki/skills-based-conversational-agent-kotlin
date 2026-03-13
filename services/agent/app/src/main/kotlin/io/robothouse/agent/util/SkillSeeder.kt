@@ -28,6 +28,10 @@ class SkillSeeder(
     private val embeddingStore: EmbeddingStore<TextSegment>
 ) : ApplicationRunner {
 
+    companion object {
+        const val FALLBACK_SKILL_NAME = "general-assistant"
+    }
+
     override fun run(args: ApplicationArguments?) {
         if (skillRepository.count() > 0) {
             log.info { "Skills already seeded, skipping" }
@@ -39,7 +43,7 @@ class SkillSeeder(
 
         val skills = listOf(
             Skill(
-                name = "general-assistant",
+                name = FALLBACK_SKILL_NAME,
                 description = "A general-purpose assistant that can help with a wide variety of questions and tasks " +
                     "including conversation, knowledge, and analysis. " +
                     "For example: 'What is the current date and time in Tokyo?'",

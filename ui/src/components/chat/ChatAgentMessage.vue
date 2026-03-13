@@ -18,7 +18,7 @@
 /** Renders an assistant message with its activity log, error state, and sanitised markdown content. */
 <script setup lang="ts">
 import { computed } from 'vue'
-import { renderMarkdown } from '@/composables/ui'
+import { useRenderedMarkdown } from '@/composables/ui'
 import type { ChatMessage } from '@/types/chat'
 import ChatActivityLog from './ChatActivityLog.vue'
 import ChatErrorMessage from './ChatErrorMessage.vue'
@@ -28,11 +28,26 @@ const props = defineProps<{
   message: ChatMessage
 }>()
 
-/** Activities to display, excluding terminal event types (final_response, error). */
+/** True when the plan has 2+ steps. */
+const isMultiStep = computed(() => {
+  const planEvent = props.message.activities.find((a) => a.type === 'plan_created')
+  return planEvent?.type === 'plan_created' && planEvent.plan.steps.length > 1
+})
+
+/**
+ * Activities to display:
+ * - Single step: show skill_matched at the top, hide per-step skill in plan_created
+ * - Multi-step: hide standalone skill_matched, show per-step skills in plan_created
+ */
 const displayActivities = computed(() =>
-  props.message.activities.filter((a) => a.type !== 'final_response' && a.type !== 'error'),
+  props.message.activities.filter(
+    (a) =>
+      a.type !== 'final_response' &&
+      a.type !== 'error' &&
+      (a.type !== 'skill_matched' || !isMultiStep.value),
+  ),
 )
 
 /** The message content parsed as markdown and sanitised with DOMPurify. */
-const renderedContent = computed(() => renderMarkdown(props.message.content))
+const renderedContent = useRenderedMarkdown(() => props.message.content)
 </script>

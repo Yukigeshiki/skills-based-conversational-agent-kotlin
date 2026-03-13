@@ -15,11 +15,10 @@ import javax.sql.DataSource
  * used for skill routing via semantic similarity.
  */
 @Configuration
-@EnableConfigurationProperties(SkillRoutingProperties::class)
+@EnableConfigurationProperties(SkillRoutingProperties::class, EmbeddingProperties::class)
 class EmbeddingConfig {
 
     companion object {
-        const val EMBEDDING_DIMENSION = 1536
         const val EMBEDDING_TABLE = "skill_embeddings"
     }
 
@@ -32,11 +31,11 @@ class EmbeddingConfig {
 
     @Bean
     @ConditionalOnProperty(name = ["spring.datasource.driver-class-name"], havingValue = "org.postgresql.Driver")
-    fun embeddingStore(dataSource: DataSource): PgVectorEmbeddingStore =
+    fun embeddingStore(dataSource: DataSource, embeddingProperties: EmbeddingProperties): PgVectorEmbeddingStore =
         PgVectorEmbeddingStore.datasourceBuilder()
             .datasource(dataSource)
             .table(EMBEDDING_TABLE)
-            .dimension(EMBEDDING_DIMENSION)
+            .dimension(embeddingProperties.dimension)
             .createTable(true)
             .build()
 }

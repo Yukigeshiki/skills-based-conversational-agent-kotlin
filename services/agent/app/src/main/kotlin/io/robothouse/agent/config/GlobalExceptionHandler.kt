@@ -39,14 +39,8 @@ class GlobalExceptionHandler {
 
     @ExceptionHandler(HttpMessageNotReadableException::class)
     fun handleHttpMessageNotReadableException(e: HttpMessageNotReadableException): ResponseEntity<ProblemDetail> {
-        log.warn(e) { "HTTP message not readable" }
-        val rootCause = e.rootCause
-        val message = if (rootCause is IllegalArgumentException) {
-            rootCause.message
-        } else {
-            "Invalid request format or data"
-        }
-        return buildResponse(message, HttpStatus.BAD_REQUEST)
+        log.warn(e) { "HTTP message not readable — root cause: ${e.rootCause?.message}" }
+        return buildResponse("Invalid request format or data", HttpStatus.BAD_REQUEST)
     }
 
     @ExceptionHandler(MethodArgumentNotValidException::class)

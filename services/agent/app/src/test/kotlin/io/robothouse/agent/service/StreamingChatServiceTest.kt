@@ -31,7 +31,7 @@ class StreamingChatServiceTest {
     private val dynamicAgentService: DynamicAgentService = mock()
     private val conversationMemoryService: ConversationMemoryService = mock()
     private val responseValidationService: ResponseValidationService = mock()
-    private val agentProperties = AgentProperties(maxToolExecutions = 10, toolExecutionTimeoutSeconds = 30, maxPlanSteps = 10)
+    private val agentProperties = AgentProperties(maxIterations = 10, toolExecutionTimeoutSeconds = 30, maxPlanSteps = 10)
     private val objectMapper: ObjectMapper = jacksonObjectMapper().registerModule(JavaTimeModule())
 
     private lateinit var service: StreamingChatService

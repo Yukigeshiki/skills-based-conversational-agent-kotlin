@@ -42,6 +42,9 @@ dependencies {
     // Tokenizer
     implementation(libs.jtokkit)
 
+    // Caching
+    implementation(libs.caffeine)
+
     // Redis
     implementation(libs.spring.boot.starter.data.redis)
 

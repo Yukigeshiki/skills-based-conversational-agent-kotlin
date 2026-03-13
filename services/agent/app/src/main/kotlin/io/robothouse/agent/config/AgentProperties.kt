@@ -13,8 +13,8 @@ import org.springframework.validation.annotation.Validated
 @Validated
 @ConfigurationProperties(prefix = "agent")
 data class AgentProperties(
-    @field:Min(1, message = "maxToolExecutions must be at least 1")
-    val maxToolExecutions: Int,
+    @field:Min(1, message = "maxIterations must be at least 1")
+    val maxIterations: Int,
 
     @field:Min(1, message = "toolExecutionTimeoutSeconds must be at least 1")
     val toolExecutionTimeoutSeconds: Long,

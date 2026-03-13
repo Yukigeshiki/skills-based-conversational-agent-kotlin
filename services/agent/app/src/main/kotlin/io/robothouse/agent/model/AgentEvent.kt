@@ -26,7 +26,8 @@ import java.time.Instant
     JsonSubTypes.Type(value = AgentEvent.FinalResponseEvent::class, name = "final_response"),
     JsonSubTypes.Type(value = AgentEvent.SkillReroutedEvent::class, name = "skill_rerouted"),
     JsonSubTypes.Type(value = AgentEvent.WarningEvent::class, name = "warning"),
-    JsonSubTypes.Type(value = AgentEvent.ErrorEvent::class, name = "error")
+    JsonSubTypes.Type(value = AgentEvent.ErrorEvent::class, name = "error"),
+    JsonSubTypes.Type(value = AgentEvent.HeartbeatEvent::class, name = "heartbeat")
 )
 sealed class AgentEvent {
     abstract val type: String
@@ -188,5 +189,15 @@ sealed class AgentEvent {
         override val timestamp: Instant = Instant.now()
     ) : AgentEvent() {
         override val type: String = "error"
+    }
+
+    /**
+     * Emitted periodically to keep the SSE connection alive during long
+     * tool executions or LLM calls, preventing proxy/browser timeouts.
+     */
+    data class HeartbeatEvent(
+        override val timestamp: Instant = Instant.now()
+    ) : AgentEvent() {
+        override val type: String = "heartbeat"
     }
 }

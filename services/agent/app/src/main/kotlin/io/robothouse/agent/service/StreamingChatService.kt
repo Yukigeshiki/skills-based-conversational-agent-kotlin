@@ -12,6 +12,9 @@ import org.springframework.stereotype.Service
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 import java.util.Collections
 import java.util.UUID
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 
 /**
  * Handles streaming chat interactions by running the agent loop on a
@@ -34,6 +37,14 @@ class StreamingChatService(
     private val objectMapper: ObjectMapper
 ) {
 
+    companion object {
+        private const val HEARTBEAT_INTERVAL_SECONDS = 30L
+    }
+
+    private val heartbeatScheduler: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { runnable ->
+        Thread.ofVirtual().name("sse-heartbeat").unstarted(runnable)
+    }
+
     /**
      * Creates an SSE emitter that streams typed agent events for the given message.
      *
@@ -52,72 +63,88 @@ class StreamingChatService(
         emitter.onTimeout { log.warn { "SSE emitter timed out" } }
         emitter.onError { ex -> log.warn { "SSE emitter error: ${ex.message}" } }
 
-        Thread.startVirtualThread {
-            try {
-                val activities = Collections.synchronizedList(mutableListOf<AgentEvent>())
-                val listener = AgentEventListener { event ->
-                    activities.add(event)
+        Thread.ofVirtual()
+            .uncaughtExceptionHandler { _, ex -> log.error(ex) { "Uncaught exception on SSE virtual thread" } }
+            .start {
+                val heartbeat = heartbeatScheduler.scheduleAtFixedRate({
                     try {
                         emitter.send(
                             SseEmitter.event()
-                                .name(event.type)
-                                .data(objectMapper.writeValueAsString(event))
+                                .name("heartbeat")
+                                .data(objectMapper.writeValueAsString(AgentEvent.HeartbeatEvent()))
+                        )
+                    } catch (_: Exception) {
+                        // Emitter already closed — heartbeat will be cancelled shortly
+                    }
+                }, HEARTBEAT_INTERVAL_SECONDS, HEARTBEAT_INTERVAL_SECONDS, TimeUnit.SECONDS)
+
+                try {
+                    val activities = Collections.synchronizedList(mutableListOf<AgentEvent>())
+                    val listener = AgentEventListener { event ->
+                        activities.add(event)
+                        try {
+                            emitter.send(
+                                SseEmitter.event()
+                                    .name(event.type)
+                                    .data(objectMapper.writeValueAsString(event))
+                            )
+                        } catch (e: Exception) {
+                            log.warn { "Failed to send SSE event: ${e.message}" }
+                        }
+                    }
+
+                    listener.onEvent(AgentEvent.ConversationStartedEvent(conversationId = resolvedConversationId))
+
+                    val history = try {
+                        val prior = conversationMemoryService.getHistory(resolvedConversationId)
+                        conversationMemoryService.addMessage(
+                            resolvedConversationId,
+                            ConversationMessage(role = "user", content = userMessage)
+                        )
+                        prior
+                    } catch (e: Exception) {
+                        log.warn { "Conversation memory unavailable: ${e.message}" }
+                        listener.onEvent(AgentEvent.WarningEvent(message = "Conversation memory is unavailable — this response won't include prior context"))
+                        emptyList()
+                    }
+
+                    val skill = skillRouterService.route(userMessage, history)
+                    listener.onEvent(AgentEvent.SkillMatchedEvent(skillName = skill.name))
+
+                    val response = if (skill.name == SkillRouterService.FALLBACK_SKILL_NAME) {
+                        dynamicAgentService.chat(skill, userMessage, listener, history)
+                    } else {
+                        executeWithValidation(skill, userMessage, listener, history)
+                    }
+
+                    try {
+                        conversationMemoryService.addMessage(
+                            resolvedConversationId,
+                            ConversationMessage(role = "assistant", content = response.response, activities = activities.toList())
                         )
                     } catch (e: Exception) {
-                        log.warn { "Failed to send SSE event: ${e.message}" }
+                        log.warn { "Failed to store assistant response: ${e.message}" }
+                        listener.onEvent(AgentEvent.WarningEvent(message = "Failed to save this response to conversation memory"))
+                    }
+
+                    heartbeat.cancel(false)
+                    emitter.complete()
+                } catch (e: Exception) {
+                    heartbeat.cancel(false)
+                    log.warn { "SSE stream error: ${e.message}" }
+                    try {
+                        emitter.send(
+                            SseEmitter.event()
+                                .name("error")
+                                .data(objectMapper.writeValueAsString(AgentEvent.ErrorEvent(message = e.message ?: "Unknown error")))
+                        )
+                        emitter.complete()
+                    } catch (sendError: Exception) {
+                        log.warn { "Failed to send error event to client: ${sendError.message}" }
+                        emitter.completeWithError(e)
                     }
                 }
-
-                listener.onEvent(AgentEvent.ConversationStartedEvent(conversationId = resolvedConversationId))
-
-                val history = try {
-                    val prior = conversationMemoryService.getHistory(resolvedConversationId)
-                    conversationMemoryService.addMessage(
-                        resolvedConversationId,
-                        ConversationMessage(role = "user", content = userMessage)
-                    )
-                    prior
-                } catch (e: Exception) {
-                    log.warn { "Conversation memory unavailable: ${e.message}" }
-                    listener.onEvent(AgentEvent.WarningEvent(message = "Conversation memory is unavailable — this response won't include prior context"))
-                    emptyList()
-                }
-
-                val skill = skillRouterService.route(userMessage, history)
-                listener.onEvent(AgentEvent.SkillMatchedEvent(skillName = skill.name))
-
-                val response = if (skill.name == SkillRouterService.FALLBACK_SKILL_NAME) {
-                    dynamicAgentService.chat(skill, userMessage, listener, history)
-                } else {
-                    executeWithValidation(skill, userMessage, listener, history)
-                }
-
-                try {
-                    conversationMemoryService.addMessage(
-                        resolvedConversationId,
-                        ConversationMessage(role = "assistant", content = response.response, activities = activities.toList())
-                    )
-                } catch (e: Exception) {
-                    log.warn { "Failed to store assistant response: ${e.message}" }
-                    listener.onEvent(AgentEvent.WarningEvent(message = "Failed to save this response to conversation memory"))
-                }
-
-                emitter.complete()
-            } catch (e: Exception) {
-                log.warn { "SSE stream error: ${e.message}" }
-                try {
-                    emitter.send(
-                        SseEmitter.event()
-                            .name("error")
-                            .data(objectMapper.writeValueAsString(AgentEvent.ErrorEvent(message = e.message ?: "Unknown error")))
-                    )
-                    emitter.complete()
-                } catch (sendError: Exception) {
-                    log.warn { "Failed to send error event to client: ${sendError.message}" }
-                    emitter.completeWithError(e)
-                }
             }
-        }
 
         return emitter
     }

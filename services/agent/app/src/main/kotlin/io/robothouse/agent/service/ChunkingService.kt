@@ -135,14 +135,74 @@ class ChunkingService {
         return result
     }
 
+    companion object {
+        /**
+         * Common abbreviations that should not trigger sentence splits.
+         * Checked case-insensitively against the token preceding a period.
+         */
+        private val ABBREVIATIONS = setOf(
+            "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "ave", "blvd",
+            "gen", "gov", "sgt", "cpl", "pvt", "capt", "lt", "col", "maj",
+            "dept", "univ", "assn", "bros", "inc", "ltd", "co", "corp",
+            "vs", "etc", "approx", "appt", "apt", "dept", "est", "min",
+            "max", "misc", "tech", "temp", "vol", "calif", "fig", "eq",
+            "no", "nos", "op", "cit", "vol", "rev", "jan", "feb", "mar",
+            "apr", "jun", "jul", "aug", "sep", "sept", "oct", "nov", "dec",
+            "ed", "trans", "e", "i"
+        )
+
+        /**
+         * Pattern matching sentence-ending punctuation followed by whitespace,
+         * used as candidate split points. Actual splitting is refined by
+         * checking for abbreviations and numeric contexts.
+         */
+        private val SENTENCE_BOUNDARY_CANDIDATES = Regex("([.!?])\\s+")
+    }
+
     /**
-     * Splits text on sentence boundaries (period/question mark/exclamation mark
-     * followed by whitespace or end of string).
+     * Splits text on sentence boundaries while preserving abbreviations,
+     * decimal numbers, and other common non-sentence-ending periods.
+     *
+     * Scans for candidate boundaries (punctuation + whitespace) and skips
+     * splits after known abbreviations, single uppercase initials, and
+     * digits (e.g. "3.14 is pi" won't split at the period).
      */
     private fun splitBySentence(text: String): List<String> {
-        return text.split(Regex("(?<=[.!?])\\s+"))
-            .map { it.trim() }
-            .filter { it.isNotEmpty() }
+        val sentences = mutableListOf<String>()
+        var start = 0
+
+        for (match in SENTENCE_BOUNDARY_CANDIDATES.findAll(text)) {
+            val punctuation = match.groupValues[1]
+            val splitPos = match.range.first + 1 // right after the punctuation char
+
+            if (punctuation == ".") {
+                val before = text.substring(start, match.range.first)
+                val lastToken = before.trimEnd().split(Regex("\\s+")).lastOrNull() ?: ""
+
+                // Skip abbreviations (e.g. "Dr." "etc.")
+                if (lastToken.removeSuffix(".").lowercase() in ABBREVIATIONS) continue
+
+                // Skip single uppercase letter initials (e.g. "J. K. Rowling")
+                if (lastToken.length == 1 && lastToken[0].isUpperCase()) continue
+
+                // Skip digits before period (e.g. "3.14", "v2.0")
+                if (lastToken.isNotEmpty() && lastToken.last().isDigit()) continue
+
+                // Skip if the character after the whitespace is lowercase (e.g. "e.g. something")
+                val afterPos = match.range.last + 1
+                if (afterPos < text.length && text[afterPos].isLowerCase()) continue
+            }
+
+            sentences.add(text.substring(start, splitPos).trim())
+            start = splitPos
+        }
+
+        val remainder = text.substring(start).trim()
+        if (remainder.isNotEmpty()) {
+            sentences.add(remainder)
+        }
+
+        return sentences.filter { it.isNotEmpty() }
     }
 
     private fun countTokens(text: String): Int {

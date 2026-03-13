@@ -1,6 +1,7 @@
 package io.robothouse.agent.model
 
 import io.robothouse.agent.validator.MaxTokens
+import io.robothouse.agent.validator.NotAllNull
 import io.robothouse.agent.validator.RegisteredTools
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Pattern
@@ -10,7 +11,9 @@ import jakarta.validation.constraints.Size
  * Request body for partially updating an existing skill.
  *
  * Only non-null fields are applied to the skill, following PATCH semantics.
+ * At least one field must be provided.
  */
+@NotAllNull
 data class UpdateSkillRequest(
     @field:NotBlank(message = "Name must not be blank")
     @field:Size(max = 64, message = "Name must not exceed 64 characters")

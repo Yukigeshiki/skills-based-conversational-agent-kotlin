@@ -89,7 +89,7 @@
                     placeholder="Paste reference content here..."
                     rows="10"
                   />
-                  <div v-show="refContentPreview" class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3" style="min-height: 15rem; max-height: 15rem;" v-html="renderMarkdown(referenceForm.content)" />
+                  <div v-show="refContentPreview" class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3" style="min-height: 15rem; max-height: 15rem;" v-html="renderedRefContent" />
                 </div>
                 <div v-if="referenceFormError" class="text-sm text-destructive">{{ referenceFormError }}</div>
                 <div class="flex gap-2">
@@ -149,13 +149,13 @@
               <!-- System Prompt -->
               <div class="space-y-2">
                 <h3 class="text-base font-semibold border-b pb-2">System Prompt</h3>
-                <div class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3" style="max-height: 16rem;" v-html="renderMarkdown(skillForm.systemPrompt)" />
+                <div class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3" style="max-height: 16rem;" v-html="renderedReviewSystemPrompt" />
               </div>
 
               <!-- Response Template -->
               <div v-if="skillForm.responseTemplate.trim()" class="space-y-2">
                 <h3 class="text-base font-semibold border-b pb-2">Response Template</h3>
-                <div class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3" style="max-height: 12rem;" v-html="renderMarkdown(skillForm.responseTemplate)" />
+                <div class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3" style="max-height: 12rem;" v-html="renderedReviewResponseTemplate" />
               </div>
 
               <!-- References -->
@@ -174,7 +174,7 @@
                     class="space-y-2"
                   >
                     <h4 class="text-sm font-medium">{{ pendingRef.name }}</h4>
-                    <div class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3" style="max-height: 12rem;" v-html="renderMarkdown(pendingRef.content)" />
+                    <div class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3" style="max-height: 12rem;" v-html="renderedReferenceContents[i] ?? ''" />
                   </div>
                 </div>
               </div>
@@ -238,7 +238,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch } from 'vue'
 import { Pencil, Plus, Trash2 } from 'lucide-vue-next'
-import { renderMarkdown } from '@/composables/ui'
+import { renderMarkdown, useRenderedMarkdown } from '@/composables/ui'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -304,6 +304,18 @@ const editingReferenceIndex = ref<number | null>(null)
 const referenceForm = reactive({ name: '', content: '' })
 const refContentPreview = ref(false)
 const referenceFormError = ref('')
+
+// Async markdown rendering
+const renderedRefContent = useRenderedMarkdown(() => referenceForm.content)
+const renderedReviewSystemPrompt = useRenderedMarkdown(() => skillForm.value.systemPrompt)
+const renderedReviewResponseTemplate = useRenderedMarkdown(() => skillForm.value.responseTemplate)
+const renderedReferenceContents = ref<string[]>([])
+
+watch(pendingReferences, async (refs) => {
+  renderedReferenceContents.value = await Promise.all(
+    refs.map((r) => renderMarkdown(r.content))
+  )
+}, { deep: true })
 
 // Step validity
 const isCurrentStepValid = computed(() => {

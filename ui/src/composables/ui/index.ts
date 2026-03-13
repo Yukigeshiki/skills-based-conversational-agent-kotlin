@@ -1,2 +1,2 @@
-export { renderMarkdown } from './useMarkdown'
+export { renderMarkdown, useRenderedMarkdown } from './useMarkdown'
 export { useSidebar } from './useSidebar'

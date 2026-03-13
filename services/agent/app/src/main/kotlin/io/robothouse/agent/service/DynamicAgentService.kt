@@ -1,5 +1,6 @@
 package io.robothouse.agent.service
 
+import dev.langchain4j.agent.tool.ToolExecutionRequest
 import dev.langchain4j.agent.tool.ToolSpecification
 import dev.langchain4j.data.message.AiMessage
 import dev.langchain4j.data.message.ChatMessage
@@ -23,8 +24,6 @@ import io.robothouse.agent.model.TaskMemory
 import io.robothouse.agent.model.ToolCall
 import io.robothouse.agent.model.ToolExecutionStep
 import io.robothouse.agent.model.ToolObservation
-import io.robothouse.agent.repository.SkillRepository
-import io.robothouse.agent.repository.ToolRepository
 import io.robothouse.agent.util.log
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
@@ -40,11 +39,11 @@ import java.util.concurrent.TimeoutException
 @Service
 class DynamicAgentService(
     @param:Qualifier("agentChatModel") private val agentChatModel: ChatModel,
-    private val toolRepository: ToolRepository,
+    private val toolService: ToolService,
     private val agentProperties: AgentProperties,
     private val taskPlanningService: TaskPlanningService,
     private val referenceRetrievalService: ReferenceRetrievalService,
-    private val skillRepository: SkillRepository
+    private val skillService: SkillService
 ) {
 
     /**
@@ -68,8 +67,8 @@ class DynamicAgentService(
         if (plan.steps.size <= 1) {
             val retrievedChunks = skill.id?.let { referenceRetrievalService.retrieveChunks(it, userMessage) } ?: emptyList()
             val effectiveSystemPrompt = buildSystemPrompt(skill, retrievedChunks)
-            val specifications = toolRepository.getSpecificationsByNames(skill.toolNames)
-            val executors = toolRepository.getExecutorsByNames(skill.toolNames)
+            val specifications = toolService.getSpecificationsByNames(skill.toolNames)
+            val executors = toolService.getExecutorsByNames(skill.toolNames)
 
             val response = executeStep(
                 effectiveSystemPrompt,
@@ -108,7 +107,7 @@ class DynamicAgentService(
             }
 
             val stepSkill = planStep.skillName?.let { name ->
-                skillRepository.findByName(name) ?: run {
+                skillService.findByName(name) ?: run {
                     log.warn { "Unknown skill '$name' in plan step ${planStep.stepNumber}, using routed skill" }
                     skill
                 }
@@ -118,8 +117,8 @@ class DynamicAgentService(
                 referenceRetrievalService.retrieveChunks(it, planStep.description)
             } ?: emptyList()
             val stepSystemPrompt = buildSystemPrompt(stepSkill, stepChunks)
-            val stepSpecs = toolRepository.getSpecificationsByNames(stepSkill.toolNames)
-            val stepExecutors = toolRepository.getExecutorsByNames(stepSkill.toolNames)
+            val stepSpecs = toolService.getSpecificationsByNames(stepSkill.toolNames)
+            val stepExecutors = toolService.getExecutorsByNames(stepSkill.toolNames)
 
             log.debug { "Executing plan step ${planStep.stepNumber}: ${planStep.description}" }
             emitEvent(listener) {
@@ -250,7 +249,7 @@ class DynamicAgentService(
         val startTime = System.currentTimeMillis()
         val timeoutMillis = agentProperties.toolExecutionTimeoutSeconds * 1000
 
-        for (iteration in 1..agentProperties.maxToolExecutions) {
+        for (iteration in 1..agentProperties.maxIterations) {
             checkTimeout(startTime, timeoutMillis)
 
             if (iteration >= 2) {
@@ -301,54 +300,11 @@ class DynamicAgentService(
             val iterationObservations = mutableListOf<ToolObservation>()
 
             aiMessage.toolExecutionRequests().forEach { toolRequest ->
-                log.debug { "Executing tool: name=${toolRequest.name()}, args=${toolRequest.arguments()}" }
-                emitEvent(listener) {
-                    AgentEvent.ToolCallStartedEvent(
-                        iterationNumber = iteration,
-                        toolName = toolRequest.name(),
-                        arguments = toolRequest.arguments()
-                    )
-                }
-
-                val executor = executors[toolRequest.name()]
-
-                val (result, isError) = if (executor == null) {
-                    log.warn { "No executor found for tool: ${toolRequest.name()}" }
-                    Pair(
-                        "Error: No tool named '${toolRequest.name()}' is available. " +
-                            "Available tools: ${executors.keys.joinToString(", ")}",
-                        true
-                    )
-                } else {
-                    try {
-                        Pair(executor.execute(toolRequest, null), false)
-                    } catch (e: Exception) {
-                        log.warn { "Tool execution failed: name=${toolRequest.name()}, error=${e.message}" }
-                        Pair("Error executing tool '${toolRequest.name()}': ${e.message}", true)
-                    }
-                }
-
-                emitEvent(listener) {
-                    AgentEvent.ToolCallCompletedEvent(
-                        iterationNumber = iteration,
-                        toolName = toolRequest.name(),
-                        result = result,
-                        error = isError
-                    )
-                }
-
-                steps.add(ToolExecutionStep(
-                    toolName = toolRequest.name(),
-                    arguments = toolRequest.arguments(),
-                    result = result,
-                    error = isError
-                ))
-
-                iterationToolCalls.add(ToolCall(toolName = toolRequest.name(), arguments = toolRequest.arguments()))
-                iterationObservations.add(ToolObservation(toolName = toolRequest.name(), result = result, error = isError))
-
-                messages.add(ToolExecutionResultMessage.from(toolRequest, result))
-                log.debug { "Tool completed: name=${toolRequest.name()}, error=$isError" }
+                val step = executeTool(toolRequest, executors, iteration, listener)
+                steps.add(step)
+                iterationToolCalls.add(ToolCall(toolName = step.toolName, arguments = step.arguments))
+                iterationObservations.add(ToolObservation(toolName = step.toolName, result = step.result, error = step.error))
+                messages.add(ToolExecutionResultMessage.from(toolRequest, step.result))
             }
 
             taskMemory.addIteration(AgentIteration(
@@ -359,7 +315,7 @@ class DynamicAgentService(
             ))
         }
 
-        log.warn { "Agent reached max tool executions: skill=$skillName, maxExecutions=${agentProperties.maxToolExecutions}" }
+        log.warn { "Agent reached max iterations: skill=$skillName, maxIterations=${agentProperties.maxIterations}" }
         val lastAiText = messages.filterIsInstance<AiMessage>().lastOrNull()?.text() ?: ""
         val agentResponse = AgentResponse(
             response = lastAiText.ifBlank { "I reached the maximum number of tool executions. Here's what I found so far." },
@@ -400,6 +356,62 @@ class DynamicAgentService(
             "- Step ${result.step.stepNumber} (${result.step.description}): ${result.status} — ${result.response}"
         }
         return "$assembled\n\n---\n\n*Some steps could not be completed:*\n$statusSummary"
+    }
+
+    /**
+     * Executes a single tool request, emitting started/completed events and
+     * returning a [ToolExecutionStep] with the result. Falls back to an error
+     * result if the executor is missing or throws.
+     */
+    private fun executeTool(
+        toolRequest: ToolExecutionRequest,
+        executors: Map<String, ToolExecutor>,
+        iteration: Int,
+        listener: AgentEventListener
+    ): ToolExecutionStep {
+        log.debug { "Executing tool: name=${toolRequest.name()}, args=${toolRequest.arguments()}" }
+        emitEvent(listener) {
+            AgentEvent.ToolCallStartedEvent(
+                iterationNumber = iteration,
+                toolName = toolRequest.name(),
+                arguments = toolRequest.arguments()
+            )
+        }
+
+        val executor = executors[toolRequest.name()]
+
+        val (result, isError) = if (executor == null) {
+            log.warn { "No executor found for tool: ${toolRequest.name()}" }
+            Pair(
+                "Error: No tool named '${toolRequest.name()}' is available. " +
+                    "Available tools: ${executors.keys.joinToString(", ")}",
+                true
+            )
+        } else {
+            try {
+                Pair(executor.execute(toolRequest, null), false)
+            } catch (e: Exception) {
+                log.warn { "Tool execution failed: name=${toolRequest.name()}, error=${e.message}" }
+                Pair("Error executing tool '${toolRequest.name()}': ${e.message}", true)
+            }
+        }
+
+        emitEvent(listener) {
+            AgentEvent.ToolCallCompletedEvent(
+                iterationNumber = iteration,
+                toolName = toolRequest.name(),
+                result = result,
+                error = isError
+            )
+        }
+
+        log.debug { "Tool completed: name=${toolRequest.name()}, error=$isError" }
+        return ToolExecutionStep(
+            toolName = toolRequest.name(),
+            arguments = toolRequest.arguments(),
+            result = result,
+            error = isError
+        )
     }
 
     /**

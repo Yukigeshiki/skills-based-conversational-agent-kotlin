@@ -31,7 +31,7 @@
             required
             rows="16"
           />
-          <div v-show="contentPreview" class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3" style="min-height: 24rem; max-height: 24rem;" v-html="renderMarkdown(form.content)" />
+          <div v-show="contentPreview" class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3" style="min-height: 24rem; max-height: 24rem;" v-html="renderedContent" />
         </div>
 
         <div v-if="validationError" class="text-sm text-destructive">{{ validationError }}</div>
@@ -56,7 +56,7 @@
  */
 <script setup lang="ts">
 import { reactive, ref, computed, watch } from 'vue'
-import { renderMarkdown } from '@/composables/ui'
+import { useRenderedMarkdown } from '@/composables/ui'
 import { Button } from '@/components/ui/button'
 import { PreviewToggleButton } from '@/components/common'
 import { Input } from '@/components/ui/input'
@@ -101,6 +101,8 @@ const form = reactive({
 const contentPreview = ref(false)
 const validationError = ref('')
 const loading = ref(false)
+
+const renderedContent = useRenderedMarkdown(() => form.content)
 
 function resetForm() {
   form.name = ''

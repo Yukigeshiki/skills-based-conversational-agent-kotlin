@@ -54,8 +54,8 @@ class ResponseValidationService(
                 )
                 .build()
 
-            val result = chatModel.chat(request).aiMessage().text()?.trim()?.uppercase()
-            val adequate = result == "ADEQUATE"
+            val result = chatModel.chat(request).aiMessage().text()?.trim()?.uppercase() ?: ""
+            val adequate = result.startsWith("ADEQUATE")
 
             if (!adequate) {
                 log.info { "Response validation: INADEQUATE — will reroute to fallback" }

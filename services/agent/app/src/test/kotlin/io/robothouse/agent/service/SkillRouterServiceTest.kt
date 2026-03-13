@@ -9,7 +9,6 @@ import dev.langchain4j.store.embedding.EmbeddingMatch
 import dev.langchain4j.store.embedding.EmbeddingSearchRequest
 import dev.langchain4j.store.embedding.EmbeddingSearchResult
 import dev.langchain4j.store.embedding.EmbeddingStore
-import io.robothouse.agent.config.EmbeddingConfig
 import io.robothouse.agent.config.SkillRoutingProperties
 import io.robothouse.agent.entity.Skill
 import io.robothouse.agent.model.ConversationMessage
@@ -31,18 +30,19 @@ class SkillRouterServiceTest {
     private val embeddingModel: EmbeddingModel = mock()
     private val embeddingStore: EmbeddingStore<TextSegment> = mock()
     private val skillRepository: SkillRepository = mock()
+    private val skillCacheService: SkillCacheService = mock()
     private val properties = SkillRoutingProperties(minSimilarityThreshold = 0.63)
 
-    private val routerService = SkillRouterService(embeddingModel, embeddingStore, skillRepository, properties)
+    private val routerService = SkillRouterService(embeddingModel, embeddingStore, skillRepository, skillCacheService, properties)
 
-    private val embedding = Embedding.from(FloatArray(EmbeddingConfig.EMBEDDING_DIMENSION) { 0.1f })
+    private val embedding = Embedding.from(FloatArray(1536) { 0.1f })
 
     @Test
     fun `routes to skill when user mentions skill name`() {
         val skill = Skill(id = UUID.randomUUID(), name = "datetime-assistant", description = "time help", systemPrompt = "prompt", toolNames = listOf("DateTimeTool"))
         val fallbackSkill = Skill(id = UUID.randomUUID(), name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
 
-        whenever(skillRepository.findAll()).thenReturn(listOf(skill, fallbackSkill))
+        whenever(skillCacheService.findAll()).thenReturn(listOf(skill, fallbackSkill))
 
         val result = routerService.route("Can you use the datetime-assistant to tell me the time?")
 
@@ -56,7 +56,7 @@ class SkillRouterServiceTest {
         val skill = Skill(id = UUID.randomUUID(), name = "DateTime-Assistant", description = "time help", systemPrompt = "prompt", toolNames = listOf("DateTimeTool"))
         val fallbackSkill = Skill(id = UUID.randomUUID(), name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
 
-        whenever(skillRepository.findAll()).thenReturn(listOf(skill, fallbackSkill))
+        whenever(skillCacheService.findAll()).thenReturn(listOf(skill, fallbackSkill))
 
         val result = routerService.route("Please use datetime-assistant for this")
 
@@ -67,7 +67,7 @@ class SkillRouterServiceTest {
     fun `does not match fallback skill by name`() {
         val fallbackSkill = Skill(id = UUID.randomUUID(), name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
 
-        whenever(skillRepository.findAll()).thenReturn(listOf(fallbackSkill))
+        whenever(skillCacheService.findAll()).thenReturn(listOf(fallbackSkill))
         whenever(embeddingModel.embed(any<String>())).thenReturn(Response(embedding))
         whenever(embeddingStore.search(any<EmbeddingSearchRequest>())).thenReturn(EmbeddingSearchResult(emptyList()))
         whenever(skillRepository.findByName("general-assistant")).thenReturn(fallbackSkill)

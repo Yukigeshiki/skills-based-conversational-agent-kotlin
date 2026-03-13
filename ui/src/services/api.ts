@@ -3,7 +3,7 @@ import axios from 'axios'
 
 const API_TIMEOUT = 30000
 
-const API_URL = import.meta.env.AGENT_SERVICE_URL || 'http://localhost:9090'
+const API_URL = import.meta.env.VITE_AGENT_SERVICE_URL || 'http://localhost:9090'
 
 export const apiClient = axios.create({
   baseURL: API_URL,

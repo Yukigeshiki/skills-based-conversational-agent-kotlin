@@ -7,7 +7,7 @@
 import type { ChatEvent, ConversationHistoryMessage } from '@/types/chat'
 import { apiClient } from './api'
 
-const API_URL = import.meta.env.AGENT_SERVICE_URL || 'http://localhost:9090'
+const API_URL = import.meta.env.VITE_AGENT_SERVICE_URL || 'http://localhost:9090'
 
 /** Callbacks invoked during an SSE chat stream. */
 export interface ChatStreamCallbacks {
@@ -141,14 +141,20 @@ class ChatService {
    */
   private processBlock(block: string, callbacks: ChatStreamCallbacks): void {
     let data = ''
+    let eventType = ''
 
     for (const line of block.split('\n')) {
       if (line.startsWith('data:')) {
         data = line.slice(5).trim()
+      } else if (line.startsWith('event:')) {
+        eventType = line.slice(6).trim()
       }
     }
 
     if (!data) return
+
+    // Skip heartbeat events — they exist only to keep the connection alive
+    if (eventType === 'heartbeat') return
 
     try {
       callbacks.onEvent(JSON.parse(data) as ChatEvent)

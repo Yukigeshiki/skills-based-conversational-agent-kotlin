@@ -29,12 +29,12 @@
 
         <!-- System Prompt section -->
         <CollapsibleSection title="System Prompt" :default-expanded="false">
-          <div class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded border p-4 max-h-64" v-html="renderMarkdown(skill.systemPrompt)" />
+          <div class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded border p-4 max-h-64" v-html="renderedSystemPrompt" />
         </CollapsibleSection>
 
         <!-- Response Template section -->
         <CollapsibleSection v-if="skill.responseTemplate" title="Response Template" :default-expanded="false">
-          <div class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded border p-4 max-h-64" v-html="renderMarkdown(skill.responseTemplate)" />
+          <div class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded border p-4 max-h-64" v-html="renderedResponseTemplate" />
         </CollapsibleSection>
 
         <!-- References section -->
@@ -93,7 +93,7 @@
 import { Badge } from '@/components/ui/badge'
 import { BaseExpandedContent, CollapsibleSection, DestructiveButton } from '@/components/common'
 import SkillReferencesSection from './SkillReferencesSection.vue'
-import { renderMarkdown } from '@/composables/ui'
+import { useRenderedMarkdown } from '@/composables/ui'
 import { useSkillFormatters } from '@/composables/skills'
 import type { Skill } from '@/types/skill'
 
@@ -104,7 +104,7 @@ interface Props {
   isLoading: boolean
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
 defineEmits<{
   /**
    * Emitted when the edit button is clicked.
@@ -121,4 +121,7 @@ defineEmits<{
 }>()
 
 const { formatDate } = useSkillFormatters()
+
+const renderedSystemPrompt = useRenderedMarkdown(() => props.skill?.systemPrompt ?? '')
+const renderedResponseTemplate = useRenderedMarkdown(() => props.skill?.responseTemplate ?? '')
 </script>

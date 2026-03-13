@@ -37,6 +37,7 @@ class SkillServiceTest {
     private val embeddingModel: EmbeddingModel = mock()
     private val embeddingStore: EmbeddingStore<TextSegment> = mock()
     private val transactionTemplate: TransactionTemplate = mock()
+    private val skillCacheService: SkillCacheService = mock()
 
     private lateinit var service: SkillService
 
@@ -52,7 +53,7 @@ class SkillServiceTest {
 
     @BeforeEach
     fun setUp() {
-        service = SkillService(skillRepository, embeddingModel, embeddingStore, transactionTemplate)
+        service = SkillService(skillRepository, embeddingModel, embeddingStore, transactionTemplate, skillCacheService)
 
         // Make TransactionTemplate execute the callback directly
         whenever(transactionTemplate.execute<Any>(any())).thenAnswer { invocation ->

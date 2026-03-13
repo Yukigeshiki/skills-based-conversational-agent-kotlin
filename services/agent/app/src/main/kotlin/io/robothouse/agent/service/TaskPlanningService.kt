@@ -10,7 +10,6 @@ import io.robothouse.agent.config.AgentProperties
 import io.robothouse.agent.model.ConversationMessage
 import io.robothouse.agent.model.PlanStep
 import io.robothouse.agent.model.TaskPlan
-import io.robothouse.agent.repository.SkillRepository
 import io.robothouse.agent.util.log
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
@@ -25,7 +24,7 @@ import org.springframework.stereotype.Service
 class TaskPlanningService(
     @param:Qualifier("lightChatModel") private val chatModel: ChatModel,
     private val agentProperties: AgentProperties,
-    private val skillRepository: SkillRepository
+    private val skillCacheService: SkillCacheService
 ) {
 
     private val objectMapper = jacksonObjectMapper()
@@ -87,7 +86,7 @@ class TaskPlanningService(
         userMessage: String,
         conversationHistory: List<ConversationMessage> = emptyList()
     ): TaskPlan {
-        val skills = skillRepository.findAll()
+        val skills = skillCacheService.findAll()
         log.debug { "Creating plan with ${skills.size} available skill(s)" }
 
         val skillDescriptions = skills.joinToString("\n") { "- ${it.name}: ${it.description}" }

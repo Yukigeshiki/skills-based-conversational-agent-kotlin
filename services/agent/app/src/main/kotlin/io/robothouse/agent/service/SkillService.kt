@@ -30,7 +30,8 @@ class SkillService(
     private val skillRepository: SkillRepository,
     private val embeddingModel: EmbeddingModel,
     private val embeddingStore: EmbeddingStore<TextSegment>,
-    private val transactionTemplate: TransactionTemplate
+    private val transactionTemplate: TransactionTemplate,
+    private val skillCacheService: SkillCacheService
 ) {
 
     /**
@@ -42,6 +43,14 @@ class SkillService(
             return skillRepository.findAllFilteredPaged(search, tools, pageable)
         }
         return skillRepository.findAll(pageable)
+    }
+
+    /**
+     * Returns the skill with the given name, or `null` if no match exists.
+     */
+    fun findByName(name: String): Skill? {
+        log.debug { "Retrieving skill by name: $name" }
+        return skillRepository.findByName(name)
     }
 
     /**
@@ -83,6 +92,7 @@ class SkillService(
             persisted
         }!!
 
+        skillCacheService.invalidate()
         log.info { "Created skill: id=${saved.id}, name=${saved.name}" }
         return saved
     }
@@ -123,6 +133,7 @@ class SkillService(
             persisted
         }!!
 
+        skillCacheService.invalidate()
         log.info { "Updated skill: id=${saved.id}, name=${saved.name}" }
         return saved
     }
@@ -149,6 +160,7 @@ class SkillService(
             skillRepository.deleteById(id)
         }
 
+        skillCacheService.invalidate()
         log.info { "Deleted skill: id=$id" }
     }
 
@@ -179,6 +191,10 @@ class SkillService(
         embeddingStore.removeAll(metadataKey("skillId").isEqualTo(skillId))
     }
 
+    /**
+     * Computes a SHA-256 hex digest of the given [input] string,
+     * used as a content hash for embedding deduplication.
+     */
     private fun sha256(input: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
         return digest.digest(input.toByteArray()).joinToString("") { "%02x".format(it) }
