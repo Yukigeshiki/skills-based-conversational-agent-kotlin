@@ -3,6 +3,7 @@ package io.robothouse.agent.service
 import dev.langchain4j.model.embedding.EmbeddingModel
 import dev.langchain4j.store.embedding.EmbeddingSearchRequest
 import dev.langchain4j.store.embedding.EmbeddingStore
+import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder.metadataKey
 import dev.langchain4j.data.segment.TextSegment
 import io.robothouse.agent.config.SkillRoutingProperties
 import io.robothouse.agent.entity.Skill
@@ -114,6 +115,7 @@ class SkillRouterService(
         val searchRequest = EmbeddingSearchRequest.builder()
             .queryEmbedding(queryEmbedding)
             .maxResults(1)
+            .filter(metadataKey("type").isEqualTo("skill"))
             .build()
 
         val results = embeddingStore.search(searchRequest)

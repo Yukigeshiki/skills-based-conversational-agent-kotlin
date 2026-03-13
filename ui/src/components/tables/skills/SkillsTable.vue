@@ -99,13 +99,15 @@
     </BaseDataView>
 
     <!-- Dialogs -->
-    <SaveSkillDialog
-      v-model:open="createDialogOpen"
+    <AddSkillDialog
+      :open="createDialogOpen"
       :error="createError"
       :submitting="createSubmitting"
+      @update:open="createDialogOpen = $event"
       @create="handleCreate"
     />
     <SaveSkillDialog
+      v-if="editingSkillId"
       v-model:open="editDialogOpen"
       :skill-id="editingSkillId"
       :error="editError"
@@ -134,6 +136,7 @@ import { BaseDataView, BaseTableExpandedRow, SortableTableHead } from '@/compone
 import SkillsTableRow from './SkillsTableRow.vue'
 import SkillsTableCard from './SkillsTableCard.vue'
 import SkillsExpandedContent from './SkillsExpandedContent.vue'
+import AddSkillDialog from './AddSkillDialog.vue'
 import SaveSkillDialog from './SaveSkillDialog.vue'
 import DeleteSkillDialog from './DeleteSkillDialog.vue'
 import SkillFiltersDialog from './SkillFiltersDialog.vue'

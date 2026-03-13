@@ -1,3 +1,4 @@
 export { skillService } from './skill'
+export { referenceService } from './reference'
 export { chatService } from './chat'
 export { toolService } from './tool'

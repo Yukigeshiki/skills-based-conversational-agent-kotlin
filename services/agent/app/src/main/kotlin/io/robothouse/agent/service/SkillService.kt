@@ -160,7 +160,7 @@ class SkillService(
         val embeddingText = buildEmbeddingText(skill)
         val embedding = embeddingModel.embed(embeddingText).content()
         val contentHash = sha256(embeddingText)
-        val metadata = Metadata.from("skillId", skill.id.toString()).put("contentHash", contentHash)
+        val metadata = Metadata.from("skillId", skill.id.toString()).put("contentHash", contentHash).put("type", "skill")
         val segment = TextSegment.from(embeddingText, metadata)
         embeddingStore.add(embedding, segment)
     }

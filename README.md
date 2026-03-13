@@ -1,6 +1,6 @@
 # Skills-Based Conversational Agent
 
-[![Agent Test](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/agent-test.yml/badge.svg)](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/agent-test.yml)
+[![Agent Test](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/agent-tests.yml/badge.svg)](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/agent-tests.yml)
 [![Agent Build](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/agent-build.yml/badge.svg)](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/agent-build.yml)
 [![UI Build](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/ui-build.yml/badge.svg)](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/ui-build.yml)
 
@@ -66,7 +66,7 @@ pnpm install
 pnpm dev  # port 5173
 ```
 
-The UI provides a chat interface and a skills management page for creating, updating, and deleting skills.
+The UI provides a chat interface and a skills management page for creating, updating, and deleting skills and their reference documents.
 
 ## Skills
 
@@ -75,6 +75,12 @@ Skills define how the agent handles different types of requests. Each skill has 
 A `general-assistant` skill is seeded on first startup. To create additional skills, use the skills management page in the UI or the REST API. System prompts should be written in markdown.
 
 All skills use multistep planning — the agent decomposes the request into steps, executes each with the skill's tools, then synthesizes the results. Simple requests produce single-step plans and skip per-step overhead.
+
+### Skill References (RAG)
+
+Skills can have **reference documents** attached — markdown or plain-text content that is chunked, embedded, and retrieved at chat time via RAG (Retrieval-Augmented Generation). Only the most relevant chunks are injected into the system prompt alongside the skill's own instructions, keeping token usage predictable while giving the agent access to large bodies of knowledge.
+
+References are managed through the UI's skill expanded view or the REST API. Content is automatically chunked using a structural splitting algorithm (markdown headings, paragraphs, sentences) targeting ~500 tokens per chunk with overlap, then embedded via OpenAI text-embedding-3-small into the same pgvector store used for skill routing. Embedding type metadata (`type=skill` vs `type=reference`) keeps routing and retrieval isolated.
 
 ### Skill Routing
 
@@ -111,6 +117,17 @@ curl -X POST http://localhost:9090/api/skills \          # Create
   -d '{"name": "my-skill", "description": "...", "systemPrompt": "...", "toolNames": ["DateTimeTool"]}'
 curl -X PATCH http://localhost:9090/api/skills/{id} ...  # Update
 curl -X DELETE http://localhost:9090/api/skills/{id}     # Delete
+```
+
+### Skill References CRUD
+
+```bash
+curl http://localhost:9090/api/skills/{skillId}/references                    # List
+curl -X POST http://localhost:9090/api/skills/{skillId}/references \          # Create
+  -H 'Content-Type: application/json' \
+  -d '{"name": "product-docs", "content": "# Product Documentation\n..."}'
+curl -X PATCH http://localhost:9090/api/skills/{skillId}/references/{id} ...  # Update
+curl -X DELETE http://localhost:9090/api/skills/{skillId}/references/{id}     # Delete
 ```
 
 ## Project Structure

@@ -336,7 +336,8 @@ class SkillServiceTest {
 
         verify(embeddingStore).add(eq(embedding), argThat<TextSegment> { segment ->
             segment.metadata().getString("skillId") == skillId.toString() &&
-                segment.metadata().getString("contentHash") != null
+                segment.metadata().getString("contentHash") != null &&
+                segment.metadata().getString("type") == "skill"
         })
     }
 }

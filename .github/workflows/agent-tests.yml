@@ -1,4 +1,4 @@
-name: Agent Test
+name: Agent Tests
 
 on:
   push:

@@ -19,6 +19,7 @@ import io.robothouse.agent.model.PlanStep
 import io.robothouse.agent.model.PlanStepStatus
 import io.robothouse.agent.model.TaskPlan
 import io.robothouse.agent.repository.ToolRepository
+import java.util.UUID
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertNull
@@ -36,6 +37,7 @@ class DynamicAgentServiceTest {
 
     private val toolRepository: ToolRepository = mock()
     private val taskPlanningService: TaskPlanningService = mock()
+    private val referenceRetrievalService: ReferenceRetrievalService = mock()
     private val agentProperties = AgentProperties(maxToolExecutions = 10, toolExecutionTimeoutSeconds = 30, maxPlanSteps = 10)
 
     private val skill = Skill(
@@ -72,7 +74,7 @@ class DynamicAgentServiceTest {
         val model = fakeChatModel(
             ChatResponse.builder().aiMessage(AiMessage.from("Hello!")).build()
         )
-        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
+        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService, referenceRetrievalService)
 
         val result = service.chat(skill, "Hi")
 
@@ -99,7 +101,7 @@ class DynamicAgentServiceTest {
             ChatResponse.builder().aiMessage(AiMessage.from(listOf(toolRequest))).build(),
             ChatResponse.builder().aiMessage(AiMessage.from("The time in Tokyo is 18:00.")).build()
         )
-        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
+        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService, referenceRetrievalService)
 
         val result = service.chat(skill, "What time is it in Tokyo?")
 
@@ -133,7 +135,7 @@ class DynamicAgentServiceTest {
 
         val properties = AgentProperties(maxToolExecutions = 3, toolExecutionTimeoutSeconds = 30, maxPlanSteps = 10)
         val model = fakeChatModel(alwaysToolCall)
-        val limitedService = DynamicAgentService(model, model, toolRepository, properties, taskPlanningService)
+        val limitedService = DynamicAgentService(model, model, toolRepository, properties, taskPlanningService, referenceRetrievalService)
 
         val result = limitedService.chat(skill, "Loop forever")
 
@@ -158,7 +160,7 @@ class DynamicAgentServiceTest {
         )
 
         val properties = AgentProperties(maxToolExecutions = 10, toolExecutionTimeoutSeconds = 0, maxPlanSteps = 10)
-        val timeoutService = DynamicAgentService(model, model, toolRepository, properties, taskPlanningService)
+        val timeoutService = DynamicAgentService(model, model, toolRepository, properties, taskPlanningService, referenceRetrievalService)
 
         assertThrows<TimeoutException> {
             timeoutService.chat(skill, "Hi")
@@ -173,7 +175,7 @@ class DynamicAgentServiceTest {
         val model = fakeChatModel(
             ChatResponse.builder().aiMessage(AiMessage.from("Simple answer")).build()
         )
-        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
+        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService, referenceRetrievalService)
 
         val result = service.chat(skill, "What is 2+2?")
 
@@ -202,7 +204,7 @@ class DynamicAgentServiceTest {
             ChatResponse.builder().aiMessage(AiMessage.from("Tokyo: 11pm")).build(),
             ChatResponse.builder().aiMessage(AiMessage.from("NYC is 10am, Tokyo is 11pm.")).build()
         )
-        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
+        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService, referenceRetrievalService)
 
         val result = service.chat(skill, "What time is it in NYC and Tokyo?")
 
@@ -254,7 +256,7 @@ class DynamicAgentServiceTest {
                 }
             }
         }
-        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
+        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService, referenceRetrievalService)
 
         val result = service.chat(skill, "Do two things")
 
@@ -287,7 +289,7 @@ class DynamicAgentServiceTest {
                 return ChatResponse.builder().aiMessage(AiMessage.from("Synthesis with partial results")).build()
             }
         }
-        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
+        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService, referenceRetrievalService)
 
         val result = service.chat(skill, "Do three things")
 
@@ -318,7 +320,7 @@ class DynamicAgentServiceTest {
                 .build(),
             ChatResponse.builder().aiMessage(AiMessage.from("Here's the answer.")).build()
         )
-        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
+        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService, referenceRetrievalService)
 
         val result = service.chat(skill, "Help me")
 
@@ -342,7 +344,7 @@ class DynamicAgentServiceTest {
             ChatResponse.builder().aiMessage(AiMessage.from(listOf(toolRequest))).build(),
             ChatResponse.builder().aiMessage(AiMessage.from("Sorry, that tool doesn't exist.")).build()
         )
-        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
+        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService, referenceRetrievalService)
 
         val result = service.chat(skill, "Use a tool")
 
@@ -369,7 +371,7 @@ class DynamicAgentServiceTest {
             ChatResponse.builder().aiMessage(AiMessage.from(listOf(toolRequest))).build(),
             ChatResponse.builder().aiMessage(AiMessage.from("The tool crashed, sorry.")).build()
         )
-        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
+        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService, referenceRetrievalService)
 
         val result = service.chat(skill, "Run the tool")
 
@@ -406,7 +408,7 @@ class DynamicAgentServiceTest {
                 return responseList[responseIndex++]
             }
         }
-        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
+        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService, referenceRetrievalService)
 
         service.chat(skill, "Try the tool")
 
@@ -423,7 +425,7 @@ class DynamicAgentServiceTest {
         val model = fakeChatModel(
             ChatResponse.builder().aiMessage(AiMessage.from("Hello!")).build()
         )
-        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
+        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService, referenceRetrievalService)
 
         val events = mutableListOf<AgentEvent>()
         service.chat(skill, "Hi", AgentEventListener { events.add(it) })
@@ -448,7 +450,7 @@ class DynamicAgentServiceTest {
             ChatResponse.builder().aiMessage(AiMessage.from(listOf(toolRequest))).build(),
             ChatResponse.builder().aiMessage(AiMessage.from("Done.")).build()
         )
-        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
+        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService, referenceRetrievalService)
 
         val events = mutableListOf<AgentEvent>()
         service.chat(skill, "Do it", AgentEventListener { events.add(it) })
@@ -481,7 +483,7 @@ class DynamicAgentServiceTest {
             ChatResponse.builder().aiMessage(AiMessage.from("Two")).build(),
             ChatResponse.builder().aiMessage(AiMessage.from("Synthesis")).build()
         )
-        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
+        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService, referenceRetrievalService)
 
         val events = mutableListOf<AgentEvent>()
         service.chat(skill, "Do two things", AgentEventListener { events.add(it) })
@@ -501,7 +503,7 @@ class DynamicAgentServiceTest {
         val model = fakeChatModel(
             ChatResponse.builder().aiMessage(AiMessage.from("Hello!")).build()
         )
-        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
+        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService, referenceRetrievalService)
 
         val result = service.chat(skill, "Hi", AgentEventListener { throw RuntimeException("Listener broke") })
 
@@ -522,7 +524,7 @@ class DynamicAgentServiceTest {
             ChatResponse.builder().aiMessage(AiMessage("Let me check", listOf(toolRequest))).build(),
             ChatResponse.builder().aiMessage(AiMessage.from("Done.")).build()
         )
-        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
+        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService, referenceRetrievalService)
 
         val events = mutableListOf<AgentEvent>()
         service.chat(skill, "Do it", AgentEventListener { events.add(it) })
@@ -554,7 +556,7 @@ class DynamicAgentServiceTest {
                 return ChatResponse.builder().aiMessage(AiMessage.from("I remember you!")).build()
             }
         }
-        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
+        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService, referenceRetrievalService)
 
         val history = listOf(
             ConversationMessage(role = "user", content = "My name is Alice"),
@@ -597,7 +599,7 @@ class DynamicAgentServiceTest {
                 return ChatResponse.builder().aiMessage(AiMessage.from("Done")).build()
             }
         }
-        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
+        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService, referenceRetrievalService)
 
         service.chat(skillWithTemplate, "Write an email")
 
@@ -619,7 +621,7 @@ class DynamicAgentServiceTest {
                 return ChatResponse.builder().aiMessage(AiMessage.from("Done")).build()
             }
         }
-        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
+        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService, referenceRetrievalService)
 
         service.chat(skill, "Hello")
 
@@ -656,7 +658,7 @@ class DynamicAgentServiceTest {
                 return responseList[responseIndex++]
             }
         }
-        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService)
+        val service = DynamicAgentService(model, model, toolRepository, agentProperties, taskPlanningService, referenceRetrievalService)
 
         service.chat(skill, "Do something")
 

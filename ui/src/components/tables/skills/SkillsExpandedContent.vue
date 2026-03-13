@@ -37,6 +37,11 @@
           <div class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded border p-4 max-h-64" v-html="renderMarkdown(skill.responseTemplate)" />
         </CollapsibleSection>
 
+        <!-- References section -->
+        <CollapsibleSection title="References" :default-expanded="false">
+          <SkillReferencesSection :skill-id="skill.id" :is-protected="skill.isProtected" />
+        </CollapsibleSection>
+
         <!-- Tools section -->
         <CollapsibleSection v-if="skill.toolNames.length" title="Tools" :default-expanded="true">
           <div class="flex flex-wrap gap-2">
@@ -87,6 +92,7 @@
 <script setup lang="ts">
 import { Badge } from '@/components/ui/badge'
 import { BaseExpandedContent, CollapsibleSection, DestructiveButton } from '@/components/common'
+import SkillReferencesSection from './SkillReferencesSection.vue'
 import { renderMarkdown } from '@/composables/ui'
 import { useSkillFormatters } from '@/composables/skills'
 import type { Skill } from '@/types/skill'

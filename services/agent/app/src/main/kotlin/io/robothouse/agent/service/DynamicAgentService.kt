@@ -13,6 +13,7 @@ import dev.langchain4j.service.tool.ToolExecutor
 import io.robothouse.agent.config.AgentProperties
 import io.robothouse.agent.listener.AgentEventListener
 import io.robothouse.agent.entity.Skill
+import io.robothouse.agent.model.RetrievedChunk
 import io.robothouse.agent.model.AgentEvent
 import io.robothouse.agent.model.AgentIteration
 import io.robothouse.agent.model.AgentResponse
@@ -41,7 +42,8 @@ class DynamicAgentService(
     @param:Qualifier("lightChatModel") private val lightChatModel: ChatModel,
     private val toolRepository: ToolRepository,
     private val agentProperties: AgentProperties,
-    private val taskPlanningService: TaskPlanningService
+    private val taskPlanningService: TaskPlanningService,
+    private val referenceRetrievalService: ReferenceRetrievalService
 ) {
 
     /**
@@ -58,7 +60,8 @@ class DynamicAgentService(
     ): AgentResponse {
         log.debug { "Processing chat request for skill: name=${skill.name}, tools=${skill.toolNames}" }
 
-        val effectiveSystemPrompt = buildSystemPrompt(skill)
+        val retrievedChunks = skill.id?.let { referenceRetrievalService.retrieveChunks(it, userMessage) } ?: emptyList()
+        val effectiveSystemPrompt = buildSystemPrompt(skill, retrievedChunks)
         val specifications = toolRepository.getSpecificationsByNames(skill.toolNames)
         val executors = toolRepository.getExecutorsByNames(skill.toolNames)
 
@@ -174,12 +177,28 @@ class DynamicAgentService(
 
     /**
      * Builds the effective system prompt for a skill by appending the response template
-     * section when one is defined.
+     * and any RAG-retrieved reference chunks.
      */
-    private fun buildSystemPrompt(skill: Skill): String {
+    private fun buildSystemPrompt(skill: Skill, retrievedChunks: List<RetrievedChunk>): String {
+        val builder = StringBuilder(skill.systemPrompt)
+
         val template = skill.responseTemplate
-        if (template.isNullOrBlank()) return skill.systemPrompt
-        return "${skill.systemPrompt}\n\n## Response Template\nUse the following template to structure your response:\n$template"
+        if (!template.isNullOrBlank()) {
+            builder.append("\n\n## Response Template\nUse the following template to structure your response:\n")
+            builder.append(template)
+        }
+
+        if (retrievedChunks.isNotEmpty()) {
+            builder.append("\n\n## Reference Context\n")
+            builder.append("The following excerpts were retrieved from reference materials and may be relevant.\n")
+            builder.append("If the excerpts don't contain relevant information, rely on your general knowledge.\n")
+            for (chunk in retrievedChunks) {
+                builder.append("\n### ${chunk.referenceName} (section ${chunk.chunkIndex + 1})\n")
+                builder.append(chunk.content)
+            }
+        }
+
+        return builder.toString()
     }
 
     /**

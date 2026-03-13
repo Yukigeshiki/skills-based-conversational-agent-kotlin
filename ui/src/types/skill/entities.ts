@@ -11,6 +11,15 @@ export interface Skill {
   updatedAt: string
 }
 
+/** Form data shape used by skill create and edit dialogs. */
+export interface SkillFormData {
+  name: string
+  description: string
+  systemPrompt: string
+  responseTemplate: string
+  toolNames: string[]
+}
+
 /** Lightweight skill projection without the system prompt. */
 export interface SkillSummary {
   id: string

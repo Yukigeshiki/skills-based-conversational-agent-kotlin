@@ -66,7 +66,7 @@ class SkillSeeder(
                 throw IllegalStateException("Skill ID was null after save: name=${saved.name}")
             }
             val descriptionHash = sha256(skill.description)
-            val metadata = Metadata.from("skillId", skillId).put("descriptionHash", descriptionHash)
+            val metadata = Metadata.from("skillId", skillId).put("descriptionHash", descriptionHash).put("type", "skill")
             val segment = TextSegment.from(skill.description, metadata)
             embeddingStore.add(embedding, segment)
             log.info { "Seeded skill: ${skill.name}" }
@@ -104,13 +104,14 @@ class SkillSeeder(
             ).matches().firstOrNull()
 
             val existingHash = existing?.embedded()?.metadata()?.getString("descriptionHash")
-            if (existing != null && existingHash == descriptionHash) {
+            val existingType = existing?.embedded()?.metadata()?.getString("type")
+            if (existing != null && existingHash == descriptionHash && existingType == "skill") {
                 continue
             }
 
             embeddingStore.removeAll(metadataKey("skillId").isEqualTo(skillId))
             val embedding = embeddingModel.embed(skill.description).content()
-            val metadata = Metadata.from("skillId", skillId).put("descriptionHash", descriptionHash)
+            val metadata = Metadata.from("skillId", skillId).put("descriptionHash", descriptionHash).put("type", "skill")
             val segment = TextSegment.from(skill.description, metadata)
             embeddingStore.add(embedding, segment)
             reembedded++

@@ -1,7 +1,8 @@
 /** Composable for skill create, update, and delete operations with error and loading state. */
 import type { Ref } from 'vue'
-import { skillService } from '@/services'
+import { skillService, referenceService } from '@/services'
 import type { Skill, CreateSkillRequest, UpdateSkillRequest } from '@/types/skill'
+import type { CreateSkillReferenceRequest } from '@/types/reference'
 
 /** Reactive refs for dialog state, error messages, and submission flags needed by CRUD handlers. */
 export interface UseSkillCrudOptions {
@@ -20,6 +21,12 @@ export interface UseSkillCrudOptions {
   onDataChanged: () => void
 }
 
+/** Payload emitted by AddSkillDialog containing skill data and optional references. */
+export interface CreateSkillWithReferences {
+  skill: CreateSkillRequest
+  references: CreateSkillReferenceRequest[]
+}
+
 /**
  * Provides async handlers for skill CRUD operations.
  *
@@ -28,18 +35,36 @@ export interface UseSkillCrudOptions {
  */
 export function useSkillCrud(options: UseSkillCrudOptions) {
   /**
-   * Creates a new skill, closes the dialog on success, and triggers a data refresh.
+   * Creates a new skill and any attached references, closes the dialog on success,
+   * and triggers a data refresh.
    *
-   * @param data - The skill creation payload.
+   * @param data - The skill creation payload with optional references.
    */
-  async function handleCreate(data: CreateSkillRequest) {
+  async function handleCreate(data: CreateSkillWithReferences) {
     options.createSubmitting.value = true
     options.createError.value = undefined
 
     try {
-      await skillService.createSkill(data)
+      const createdSkill = await skillService.createSkill(data.skill)
+
+      // Skill created — attempt to add references. If some fail, still close the dialog
+      // since the skill exists, and inform the user which references need to be re-added.
+      const failedReferences: string[] = []
+      for (const ref of data.references) {
+        try {
+          await referenceService.createReference(createdSkill.id, ref)
+        } catch {
+          failedReferences.push(ref.name)
+        }
+      }
+
       options.createDialogOpen.value = false
       options.onDataChanged()
+
+      if (failedReferences.length > 0) {
+        options.createError.value =
+          `Skill created, but ${failedReferences.length} of ${data.references.length} reference(s) failed to save: ${failedReferences.join(', ')}. Please re-add them via the edit flow.`
+      }
     } catch (err) {
       options.createError.value = err instanceof Error ? err.message : 'Failed to create skill'
     } finally {

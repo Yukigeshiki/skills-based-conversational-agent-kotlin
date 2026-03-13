@@ -10,5 +10,9 @@ import java.util.UUID
  * via the [FilterSkillRepository] custom fragment.
  */
 interface SkillRepository : JpaRepository<Skill, UUID>, UpdateSkillRepository, FilterSkillRepository {
+
+    /**
+     * Finds a skill by its exact [name], or `null` if no match exists.
+     */
     fun findByName(name: String): Skill?
 }

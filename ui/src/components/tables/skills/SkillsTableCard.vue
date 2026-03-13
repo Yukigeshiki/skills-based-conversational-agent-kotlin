@@ -10,7 +10,7 @@
       </div>
     </CardHeader>
     <CardContent class="pt-0 pb-4">
-      <p class="text-xs text-muted-foreground mb-2">{{ truncateDescription(skill.description) }}</p>
+      <p class="text-xs text-muted-foreground mb-2 line-clamp-2 min-h-[2lh]">{{ skill.description }}</p>
       <div class="flex gap-1 overflow-hidden h-5 mb-2">
         <Badge v-for="tool in skill.toolNames" :key="tool" variant="outline" class="text-xs shrink-0">
           {{ tool }}
@@ -44,5 +44,5 @@ defineEmits<{
   toggle: [event: Event]
 }>()
 
-const { truncateDescription, formatDate } = useSkillFormatters()
+const { formatDate } = useSkillFormatters()
 </script>

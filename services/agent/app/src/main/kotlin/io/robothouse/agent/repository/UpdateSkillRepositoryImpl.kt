@@ -4,7 +4,6 @@ import io.robothouse.agent.entity.Skill
 import io.robothouse.agent.model.UpdateSkillRequest
 import jakarta.persistence.EntityManager
 import org.springframework.stereotype.Repository
-import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 /**
@@ -16,7 +15,6 @@ class UpdateSkillRepositoryImpl(
     private val entityManager: EntityManager
 ) : UpdateSkillRepository {
 
-    @Transactional
     override fun patchUpdate(id: UUID, request: UpdateSkillRequest): Skill? {
         val setClauses = mutableListOf<String>()
         val params = mutableMapOf<String, Any?>()
