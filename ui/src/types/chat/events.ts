@@ -9,6 +9,7 @@ export interface PlanStep {
   stepNumber: number
   description: string
   expectedTools: string[]
+  skillName: string | null
 }
 
 export interface TaskPlan {
@@ -40,6 +41,7 @@ export interface PlanStepStartedEvent {
   type: 'plan_step_started'
   stepNumber: number
   description: string
+  skillName: string | null
   timestamp: string
 }
 

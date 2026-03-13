@@ -23,6 +23,7 @@ import io.robothouse.agent.model.TaskMemory
 import io.robothouse.agent.model.ToolCall
 import io.robothouse.agent.model.ToolExecutionStep
 import io.robothouse.agent.model.ToolObservation
+import io.robothouse.agent.repository.SkillRepository
 import io.robothouse.agent.repository.ToolRepository
 import io.robothouse.agent.util.log
 import org.springframework.beans.factory.annotation.Qualifier
@@ -39,11 +40,11 @@ import java.util.concurrent.TimeoutException
 @Service
 class DynamicAgentService(
     @param:Qualifier("agentChatModel") private val agentChatModel: ChatModel,
-    @param:Qualifier("lightChatModel") private val lightChatModel: ChatModel,
     private val toolRepository: ToolRepository,
     private val agentProperties: AgentProperties,
     private val taskPlanningService: TaskPlanningService,
-    private val referenceRetrievalService: ReferenceRetrievalService
+    private val referenceRetrievalService: ReferenceRetrievalService,
+    private val skillRepository: SkillRepository
 ) {
 
     /**
@@ -60,16 +61,16 @@ class DynamicAgentService(
     ): AgentResponse {
         log.debug { "Processing chat request for skill: name=${skill.name}, tools=${skill.toolNames}" }
 
-        val retrievedChunks = skill.id?.let { referenceRetrievalService.retrieveChunks(it, userMessage) } ?: emptyList()
-        val effectiveSystemPrompt = buildSystemPrompt(skill, retrievedChunks)
-        val specifications = toolRepository.getSpecificationsByNames(skill.toolNames)
-        val executors = toolRepository.getExecutorsByNames(skill.toolNames)
-
-        val plan = taskPlanningService.createPlan(userMessage, specifications, conversationHistory)
+        val plan = taskPlanningService.createPlan(userMessage, conversationHistory)
         log.debug { "Created plan with ${plan.steps.size} step(s): ${plan.reasoning}" }
         emitEvent(listener) { AgentEvent.PlanCreatedEvent(plan = plan) }
 
         if (plan.steps.size <= 1) {
+            val retrievedChunks = skill.id?.let { referenceRetrievalService.retrieveChunks(it, userMessage) } ?: emptyList()
+            val effectiveSystemPrompt = buildSystemPrompt(skill, retrievedChunks)
+            val specifications = toolRepository.getSpecificationsByNames(skill.toolNames)
+            val executors = toolRepository.getExecutorsByNames(skill.toolNames)
+
             val response = executeStep(
                 effectiveSystemPrompt,
                 userMessage,
@@ -106,8 +107,28 @@ class DynamicAgentService(
                 continue
             }
 
+            val stepSkill = planStep.skillName?.let { name ->
+                skillRepository.findByName(name) ?: run {
+                    log.warn { "Unknown skill '$name' in plan step ${planStep.stepNumber}, using routed skill" }
+                    skill
+                }
+            } ?: skill
+
+            val stepChunks = stepSkill.id?.let {
+                referenceRetrievalService.retrieveChunks(it, planStep.description)
+            } ?: emptyList()
+            val stepSystemPrompt = buildSystemPrompt(stepSkill, stepChunks)
+            val stepSpecs = toolRepository.getSpecificationsByNames(stepSkill.toolNames)
+            val stepExecutors = toolRepository.getExecutorsByNames(stepSkill.toolNames)
+
             log.debug { "Executing plan step ${planStep.stepNumber}: ${planStep.description}" }
-            emitEvent(listener) { AgentEvent.PlanStepStartedEvent(stepNumber = planStep.stepNumber, description = planStep.description) }
+            emitEvent(listener) {
+                AgentEvent.PlanStepStartedEvent(
+                    stepNumber = planStep.stepNumber,
+                    description = planStep.description,
+                    skillName = stepSkill.name
+                )
+            }
 
             val priorContext = if (stepResults.isNotEmpty()) {
                 val priorSummary = stepResults.joinToString("\n") { result ->
@@ -120,7 +141,7 @@ class DynamicAgentService(
 
             try {
                 val stepResponse = executeStep(
-                    effectiveSystemPrompt, priorContext, specifications, executors, skill.name, listener, emitFinalResponse = false
+                    stepSystemPrompt, priorContext, stepSpecs, stepExecutors, stepSkill.name, listener, emitFinalResponse = false
                 )
                 allToolSteps.addAll(stepResponse.steps)
                 val stepResult = PlanStepResult(
@@ -139,7 +160,7 @@ class DynamicAgentService(
                     )
                 }
             } catch (e: Exception) {
-                log.warn { "Plan step ${planStep.stepNumber} failed for skill: name=${skill.name}, error: ${e.message}" }
+                log.warn { "Plan step ${planStep.stepNumber} failed for skill: name=${stepSkill.name}, error: ${e.message}" }
                 stepResults.add(
                     PlanStepResult(
                         step = planStep,
@@ -158,12 +179,11 @@ class DynamicAgentService(
             }
         }
 
-        log.debug { "Synthesizing results for ${stepResults.size} plan steps" }
-        val synthesisResponse = synthesizeResults(effectiveSystemPrompt, userMessage, stepResults)
+        val assembledResponse = assembleResults(stepResults)
 
         log.info { "Completed planned chat for skill: name=${skill.name}, steps=${plan.steps.size}, toolExecutions=${allToolSteps.size}" }
         val agentResponse = AgentResponse(
-            response = synthesisResponse,
+            response = assembledResponse,
             skill = skill.name,
             steps = allToolSteps,
             toolExecutionCount = allToolSteps.size,
@@ -355,47 +375,31 @@ class DynamicAgentService(
     }
 
     /**
-     * Combines results from all plan steps into a coherent final response
-     * via a dedicated LLM synthesis call.
+     * Deterministically assembles step responses into a final response.
+     * Completed results are joined with separators. Failed and skipped steps
+     * are appended as a status summary so no information is lost.
      */
-    private fun synthesizeResults(
-        systemPrompt: String,
-        originalMessage: String,
-        stepResults: List<PlanStepResult>
-    ): String {
-        val resultsSummary = stepResults.joinToString("\n\n") { result ->
-            "Step ${result.step.stepNumber} - ${result.step.description}\nStatus: ${result.status}\nResult: ${result.response}"
+    private fun assembleResults(stepResults: List<PlanStepResult>): String {
+        val completedResults = stepResults.filter { it.status == PlanStepStatus.COMPLETED }
+        if (completedResults.isEmpty()) {
+            return "I was unable to complete any of the requested steps."
         }
 
-        val synthesisPrompt = """
-            |$systemPrompt
-            |
-            |You executed a multi-step plan. Synthesize the results into a coherent final response for the user.
-            |
-            |Original request: $originalMessage
-            |
-            |Step results:
-            |$resultsSummary
-            |
-            |Provide a clear, unified response based on all step results.
-        """.trimMargin()
-
-        val request = ChatRequest.builder()
-            .messages(
-                listOf(
-                    SystemMessage.from(synthesisPrompt),
-                    UserMessage.from("Please synthesize the results above into a final response.")
-                )
-            )
-            .build()
-
-        val response = lightChatModel.chat(request)
-        val text = response.aiMessage().text()
-        if (text.isNullOrBlank()) {
-            log.warn { "Synthesis returned empty response" }
-            return "I was unable to synthesize a response from the plan step results."
+        val assembled = if (completedResults.size == 1) {
+            completedResults.first().response
+        } else {
+            completedResults.joinToString("\n\n---\n\n") { it.response }
         }
-        return text
+
+        val nonCompleted = stepResults.filter { it.status != PlanStepStatus.COMPLETED }
+        if (nonCompleted.isEmpty()) {
+            return assembled
+        }
+
+        val statusSummary = nonCompleted.joinToString("\n") { result ->
+            "- Step ${result.step.stepNumber} (${result.step.description}): ${result.status} — ${result.response}"
+        }
+        return "$assembled\n\n---\n\n*Some steps could not be completed:*\n$statusSummary"
     }
 
     /**

@@ -1,16 +1,22 @@
 package io.robothouse.agent.service
 
-import dev.langchain4j.agent.tool.ToolSpecification
 import dev.langchain4j.data.message.AiMessage
+import dev.langchain4j.data.message.SystemMessage
 import dev.langchain4j.data.message.UserMessage
 import dev.langchain4j.model.chat.ChatModel
 import dev.langchain4j.model.chat.request.ChatRequest
 import dev.langchain4j.model.chat.response.ChatResponse
 import io.robothouse.agent.config.AgentProperties
+import io.robothouse.agent.entity.Skill
 import io.robothouse.agent.model.ConversationMessage
+import io.robothouse.agent.repository.SkillRepository
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.mockito.kotlin.mock
+import org.mockito.kotlin.whenever
 
 class TaskPlanningServiceTest {
 
@@ -20,7 +26,18 @@ class TaskPlanningServiceTest {
         maxPlanSteps = 5
     )
 
+    private val skillRepository: SkillRepository = mock()
     private var capturedRequest: ChatRequest? = null
+
+    private val testSkills = listOf(
+        Skill(name = "general", description = "General knowledge and conversation", systemPrompt = "You are helpful.", toolNames = emptyList()),
+        Skill(name = "time", description = "Time and timezone queries", systemPrompt = "You handle time.", toolNames = listOf("getCurrentDateTime"))
+    )
+
+    @BeforeEach
+    fun setUp() {
+        whenever(skillRepository.findAll()).thenReturn(testSkills)
+    }
 
     private fun fakeChatModel(response: String): ChatModel {
         return object : ChatModel {
@@ -43,11 +60,8 @@ class TaskPlanningServiceTest {
             }
         """.trimIndent()
 
-        val service = TaskPlanningService(fakeChatModel(json), agentProperties)
-        val plan = service.createPlan(
-            "Do something complex",
-            listOf(ToolSpecification.builder().name("ToolA").description("A").build())
-        )
+        val service = TaskPlanningService(fakeChatModel(json), agentProperties, skillRepository)
+        val plan = service.createPlan("Do something complex")
 
         assertEquals(2, plan.steps.size)
         assertEquals("Need multiple steps", plan.reasoning)
@@ -66,8 +80,8 @@ class TaskPlanningServiceTest {
             }
         """.trimIndent()
 
-        val service = TaskPlanningService(fakeChatModel(json), agentProperties)
-        val plan = service.createPlan("Simple question", emptyList())
+        val service = TaskPlanningService(fakeChatModel(json), agentProperties, skillRepository)
+        val plan = service.createPlan("Simple question")
 
         assertEquals(1, plan.steps.size)
         assertEquals("Simple request", plan.reasoning)
@@ -75,8 +89,8 @@ class TaskPlanningServiceTest {
 
     @Test
     fun `falls back to single-step plan on malformed JSON`() {
-        val service = TaskPlanningService(fakeChatModel("not valid json at all"), agentProperties)
-        val plan = service.createPlan("Do something", emptyList())
+        val service = TaskPlanningService(fakeChatModel("not valid json at all"), agentProperties, skillRepository)
+        val plan = service.createPlan("Do something")
 
         assertEquals(1, plan.steps.size)
         assertEquals("Do something", plan.steps[0].description)
@@ -90,8 +104,8 @@ class TaskPlanningServiceTest {
         }
         val json = """{"reasoning": "Many steps", "steps": [$steps]}"""
 
-        val service = TaskPlanningService(fakeChatModel(json), agentProperties)
-        val plan = service.createPlan("Complex task", emptyList())
+        val service = TaskPlanningService(fakeChatModel(json), agentProperties, skillRepository)
+        val plan = service.createPlan("Complex task")
 
         assertEquals(5, plan.steps.size)
     }
@@ -107,8 +121,8 @@ class TaskPlanningServiceTest {
             ```
         """.trimIndent()
 
-        val service = TaskPlanningService(fakeChatModel(json), agentProperties)
-        val plan = service.createPlan("Question", emptyList())
+        val service = TaskPlanningService(fakeChatModel(json), agentProperties, skillRepository)
+        val plan = service.createPlan("Question")
 
         assertEquals(1, plan.steps.size)
         assertEquals("Wrapped in fences", plan.reasoning)
@@ -122,8 +136,8 @@ class TaskPlanningServiceTest {
             ConversationMessage(role = "assistant", content = "Tomatoes are wonderful fruits...")
         )
 
-        val service = TaskPlanningService(fakeChatModel(json), agentProperties)
-        service.createPlan("Varieties.", emptyList(), history)
+        val service = TaskPlanningService(fakeChatModel(json), agentProperties, skillRepository)
+        service.createPlan("Varieties.", history)
 
         val userMessageText = (capturedRequest!!.messages().last() as UserMessage).singleText()
         assertTrue(userMessageText.contains("Tomatoes are wonderful fruits..."))
@@ -134,10 +148,61 @@ class TaskPlanningServiceTest {
     fun `sends only user message when history is empty`() {
         val json = """{"reasoning": "Simple", "steps": [{"stepNumber": 1, "description": "Answer", "expectedTools": []}]}"""
 
-        val service = TaskPlanningService(fakeChatModel(json), agentProperties)
-        service.createPlan("Varieties.", emptyList(), emptyList())
+        val service = TaskPlanningService(fakeChatModel(json), agentProperties, skillRepository)
+        service.createPlan("Varieties.", emptyList())
 
         val userMessageText = (capturedRequest!!.messages().last() as UserMessage).singleText()
         assertEquals("Varieties.", userMessageText)
+    }
+
+    @Test
+    fun `planning prompt contains skill names and descriptions`() {
+        val json = """{"reasoning": "Simple", "steps": [{"stepNumber": 1, "description": "Answer", "expectedTools": []}]}"""
+
+        val service = TaskPlanningService(fakeChatModel(json), agentProperties, skillRepository)
+        service.createPlan("Hello")
+
+        val systemMessageText = (capturedRequest!!.messages().first() as SystemMessage).text()
+        assertTrue(systemMessageText.contains("general: General knowledge and conversation"))
+        assertTrue(systemMessageText.contains("time: Time and timezone queries"))
+        assertTrue(systemMessageText.contains("Available Skills"))
+    }
+
+    @Test
+    fun `parsed plan preserves skillName field from JSON`() {
+        val json = """
+            {
+              "reasoning": "Two skills needed",
+              "steps": [
+                {"stepNumber": 1, "description": "Garden stuff", "expectedTools": [], "skillName": "garden"},
+                {"stepNumber": 2, "description": "Time stuff", "expectedTools": [], "skillName": "time"}
+              ]
+            }
+        """.trimIndent()
+
+        val service = TaskPlanningService(fakeChatModel(json), agentProperties, skillRepository)
+        val plan = service.createPlan("Tell me about tomatoes then the time")
+
+        assertEquals(2, plan.steps.size)
+        assertEquals("garden", plan.steps[0].skillName)
+        assertEquals("time", plan.steps[1].skillName)
+    }
+
+    @Test
+    fun `parsed plan has null skillName when not provided in JSON`() {
+        val json = """
+            {
+              "reasoning": "No skill specified",
+              "steps": [
+                {"stepNumber": 1, "description": "Just answer", "expectedTools": []}
+              ]
+            }
+        """.trimIndent()
+
+        val service = TaskPlanningService(fakeChatModel(json), agentProperties, skillRepository)
+        val plan = service.createPlan("Simple question")
+
+        assertEquals(1, plan.steps.size)
+        assertNull(plan.steps[0].skillName)
     }
 }

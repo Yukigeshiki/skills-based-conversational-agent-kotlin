@@ -2,7 +2,6 @@ package io.robothouse.agent.service
 
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
-import dev.langchain4j.agent.tool.ToolSpecification
 import dev.langchain4j.data.message.SystemMessage
 import dev.langchain4j.data.message.UserMessage
 import dev.langchain4j.model.chat.ChatModel
@@ -11,6 +10,7 @@ import io.robothouse.agent.config.AgentProperties
 import io.robothouse.agent.model.ConversationMessage
 import io.robothouse.agent.model.PlanStep
 import io.robothouse.agent.model.TaskPlan
+import io.robothouse.agent.repository.SkillRepository
 import io.robothouse.agent.util.log
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
@@ -24,21 +24,22 @@ import org.springframework.stereotype.Service
 @Service
 class TaskPlanningService(
     @param:Qualifier("lightChatModel") private val chatModel: ChatModel,
-    private val agentProperties: AgentProperties
+    private val agentProperties: AgentProperties,
+    private val skillRepository: SkillRepository
 ) {
 
     private val objectMapper = jacksonObjectMapper()
 
     companion object {
         val PLANNING_PROMPT = """
-            |You are a task planner. Given a user request and a list of available tools, decide whether the request needs multiple execution steps.
+            |You are a task planner. Given a user request and a list of available skills, decide whether the request needs multiple execution steps.
             |
             |## When to use multiple steps
             |
-            |Use multiple steps **only** when the request genuinely requires sequential reasoning — i.e. the output of one step informs the next, or multiple distinct tool calls must happen in sequence.
+            |Use multiple steps **only** when the request genuinely requires sequential reasoning — i.e. the output of one step informs the next, or multiple distinct tasks must happen in sequence.
             |
             |Examples of multi-step requests:
-            |- "What's the time difference between Tokyo and New York?" → step 1: get Tokyo time, step 2: get New York time (requires two separate tool calls whose results are combined)
+            |- "What's the time difference between Tokyo and New York?" → step 1: get Tokyo time, step 2: get New York time (requires two separate calls whose results are combined)
             |- "Look up the weather then suggest an outfit" → step 1: fetch weather, step 2: reason about outfit based on the result
             |
             |## When to use a single step
@@ -50,9 +51,11 @@ class TaskPlanningService(
             |
             |**Default to a single step.** When in doubt, use one step.
             |
-            |## Available Tools
+            |## Available Skills
             |
-            |{{tools}}
+            |Each skill has its own set of tools and expertise. Assign the most appropriate skill to each step.
+            |
+            |{{skills}}
             |
             |## Response Format
             |
@@ -65,7 +68,8 @@ class TaskPlanningService(
             |    {
             |      "stepNumber": 1,
             |      "description": "What to do in this step",
-            |      "expectedTools": ["toolName1"]
+            |      "expectedTools": ["toolName1"],
+            |      "skillName": "skill-name"
             |    }
             |  ]
             |}
@@ -81,16 +85,14 @@ class TaskPlanningService(
      */
     fun createPlan(
         userMessage: String,
-        toolSpecifications: List<ToolSpecification>,
         conversationHistory: List<ConversationMessage> = emptyList()
     ): TaskPlan {
-        log.debug { "Creating plan with ${toolSpecifications.size} available tool(s)" }
+        val skills = skillRepository.findAll()
+        log.debug { "Creating plan with ${skills.size} available skill(s)" }
 
-        val toolDescriptions = toolSpecifications.joinToString("\n") { spec ->
-            "- ${spec.name()}: ${spec.description() ?: "No description"}"
-        }
+        val skillDescriptions = skills.joinToString("\n") { "- ${it.name}: ${it.description}" }
 
-        val resolvedPrompt = PLANNING_PROMPT.replace("{{tools}}", toolDescriptions)
+        val resolvedPrompt = PLANNING_PROMPT.replace("{{skills}}", skillDescriptions)
 
         val contextualMessage = buildContextualMessage(userMessage, conversationHistory)
 

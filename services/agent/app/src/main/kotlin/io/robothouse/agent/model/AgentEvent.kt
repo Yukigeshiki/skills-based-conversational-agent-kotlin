@@ -71,6 +71,7 @@ sealed class AgentEvent {
     data class PlanStepStartedEvent(
         val stepNumber: Int,
         val description: String,
+        val skillName: String? = null,
         override val timestamp: Instant = Instant.now()
     ) : AgentEvent() {
         override val type: String = "plan_step_started"

@@ -40,7 +40,8 @@ data class TaskPlan(
 data class PlanStep(
     val stepNumber: Int,
     val description: String,
-    val expectedTools: List<String> = emptyList()
+    val expectedTools: List<String> = emptyList(),
+    val skillName: String? = null
 )
 
 /**
