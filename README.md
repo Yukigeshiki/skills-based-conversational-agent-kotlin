@@ -9,10 +9,11 @@ A conversational agent built with Kotlin and Spring Boot. User messages are rout
 ## How It Works
 
 1. **Skill routing** — the user message is routed to the best-matching skill (see [Skill Routing](#skill-routing) below)
-2. **Planning** — the skill provides a system prompt and tool list; the agent decomposes the request into execution steps
-3. **Agent loop** — Claude reasons, calls tools, observes results, and repeats until done
+2. **Planning** — the agent decomposes the request into execution steps; each step can target a different skill for multi-skill workflows
+3. **Agent loop** — Claude reasons, calls tools, observes results, and repeats until done (step failure short-circuits remaining steps)
 4. **Validation** — specialist skill responses are validated; inadequate ones are rerouted to the general-assistant fallback
 5. **Streaming** — SSE events stream back throughout (skill matched, thoughts, tool calls, plan steps, response)
+6. **Memory** — Redis-backed conversation history (50 messages, 24h TTL) enables multi-turn context
 
 ## Prerequisites
 
@@ -70,17 +71,21 @@ The UI provides a chat interface and a skills management page for creating, upda
 
 ## Skills
 
-Skills define how the agent handles different types of requests. Each skill has a name, description, system prompt, and a list of tools. When a user sends a message, it is routed to the most relevant skill via the [routing cascade](#skill-routing) described below.
+Skills define how the agent handles different types of requests. Each skill has a name, description, system prompt, an optional response template, and a list of tools. When a user sends a message, it is routed to the most relevant skill via the [routing cascade](#skill-routing) described below.
 
-A `general-assistant` skill is seeded on first startup. To create additional skills, use the skills management page in the UI or the REST API. System prompts should be written in markdown.
+A `general-assistant` skill is seeded on first startup and is protected (non-deletable and immutable). To create additional skills, use the skills management page in the UI or the REST API. System prompts should be written in markdown.
 
-All skills use multistep planning — the agent decomposes the request into steps, executes each with the skill's tools, then synthesizes the results. Simple requests produce single-step plans and skip per-step overhead.
+All skills use multistep planning — the agent decomposes the request into steps, and each step can target a different skill for multi-skill workflows. Simple requests produce single-step plans and skip per-step overhead. If a step fails, remaining steps are short-circuited.
+
+### Response Templates
+
+Skills can optionally define a **response template** — a markdown template that is injected into the system prompt to standardize how the agent structures its output for that skill.
 
 ### Skill References (RAG)
 
 Skills can have **reference documents** attached — markdown or plain-text content that is chunked, embedded, and retrieved at chat time via RAG (Retrieval-Augmented Generation). Only the most relevant chunks are injected into the system prompt alongside the skill's own instructions, keeping token usage predictable while giving the agent access to large bodies of knowledge.
 
-References are managed through the UI's skill expanded view or the REST API. Content is automatically chunked using a structural splitting algorithm (markdown headings, paragraphs, sentences) targeting ~500 tokens per chunk with overlap, then embedded via OpenAI text-embedding-3-small into the same pgvector store used for skill routing. Embedding type metadata (`type=skill` vs `type=reference`) keeps routing and retrieval isolated.
+References are managed through the UI's skill expanded view or the REST API. Content is automatically chunked using a structural splitting algorithm (markdown headings, paragraphs, sentences) targeting ~500 tokens per chunk with overlap, then embedded via OpenAI text-embedding-3-small into the same pgvector store used for skill routing. Embedding type metadata (`type=skill` vs `type=reference`) keeps routing and retrieval isolated. Retrieval is skill-scoped — during multistep planning, each step retrieves reference chunks specific to its targeted skill.
 
 ### Skill Routing
 
@@ -103,9 +108,21 @@ Swagger UI: http://localhost:9090/swagger-ui.html
 ### Chat (SSE)
 
 ```bash
+# New conversation
 curl -N -X POST http://localhost:9090/api/chat \
   -H 'Content-Type: application/json' \
   -d '{"message": "What time is it in Tokyo?"}'
+
+# Continue an existing conversation
+curl -N -X POST http://localhost:9090/api/chat \
+  -H 'Content-Type: application/json' \
+  -d '{"message": "And in New York?", "conversationId": "<uuid>"}'
+```
+
+### Conversation History
+
+```bash
+curl http://localhost:9090/api/chat/{conversationId}/history
 ```
 
 ### Skills CRUD
@@ -114,7 +131,7 @@ curl -N -X POST http://localhost:9090/api/chat \
 curl http://localhost:9090/api/skills                    # List
 curl -X POST http://localhost:9090/api/skills \          # Create
   -H 'Content-Type: application/json' \
-  -d '{"name": "my-skill", "description": "...", "systemPrompt": "...", "toolNames": ["DateTimeTool"]}'
+  -d '{"name": "my-skill", "description": "...", "systemPrompt": "...", "responseTemplate": "...", "toolNames": ["DateTimeTool"]}'
 curl -X PATCH http://localhost:9090/api/skills/{id} ...  # Update
 curl -X DELETE http://localhost:9090/api/skills/{id}     # Delete
 ```
@@ -128,6 +145,12 @@ curl -X POST http://localhost:9090/api/skills/{skillId}/references \          # 
   -d '{"name": "product-docs", "content": "# Product Documentation\n..."}'
 curl -X PATCH http://localhost:9090/api/skills/{skillId}/references/{id} ...  # Update
 curl -X DELETE http://localhost:9090/api/skills/{skillId}/references/{id}     # Delete
+```
+
+### Tools
+
+```bash
+curl http://localhost:9090/api/tools                     # List registered tool names
 ```
 
 ## Project Structure
