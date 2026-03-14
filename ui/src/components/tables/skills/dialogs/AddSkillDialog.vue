@@ -247,7 +247,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { WizardStepper } from '@/components/ui/wizard-stepper'
 import { PreviewToggleButton } from '@/components/common'
-import SkillDetailsForm from './SkillDetailsForm.vue'
+import SkillDetailsForm from '../SkillDetailsForm.vue'
 import type { CreateSkillRequest, SkillFormData } from '@/types/skill'
 import type { CreateSkillReferenceRequest } from '@/types/reference'
 

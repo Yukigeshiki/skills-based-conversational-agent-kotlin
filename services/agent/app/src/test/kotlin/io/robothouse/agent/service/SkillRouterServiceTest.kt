@@ -17,7 +17,6 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.mockito.kotlin.any
-import org.mockito.kotlin.argThat
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
@@ -31,11 +30,19 @@ class SkillRouterServiceTest {
     private val embeddingStore: EmbeddingStore<TextSegment> = mock()
     private val skillRepository: SkillRepository = mock()
     private val skillCacheService: SkillCacheService = mock()
-    private val properties = SkillRoutingProperties(minSimilarityThreshold = 0.63)
+    private val properties = SkillRoutingProperties(minSimilarityThreshold = 0.60)
+    private val queryEnrichmentService: QueryEnrichmentService = mock()
 
-    private val routerService = SkillRouterService(embeddingModel, embeddingStore, skillRepository, skillCacheService, properties)
+    private val routerService = SkillRouterService(
+        embeddingModel, embeddingStore, skillRepository, skillCacheService, properties, queryEnrichmentService
+    )
 
     private val embedding = Embedding.from(FloatArray(1536) { 0.1f })
+
+    init {
+        // Default: enrichment returns raw query so existing tests work unchanged
+        whenever(queryEnrichmentService.enrich(any(), any())).thenAnswer { it.arguments[0] as String }
+    }
 
     @Test
     fun `routes to skill when user mentions skill name`() {
@@ -47,7 +54,6 @@ class SkillRouterServiceTest {
         val result = routerService.route("Can you use the datetime-assistant to tell me the time?")
 
         assertEquals("datetime-assistant", result.name)
-        // Should not call embedding model at all
         verify(embeddingModel, times(0)).embed(any<String>())
     }
 
@@ -75,7 +81,6 @@ class SkillRouterServiceTest {
         val result = routerService.route("use the general-assistant skill")
 
         assertEquals("general-assistant", result.name)
-        // Should fall through to embedding search since fallback is excluded from name matching
         verify(embeddingModel).embed(any<String>())
     }
 
@@ -93,32 +98,6 @@ class SkillRouterServiceTest {
         val result = routerService.route("What time is it?")
 
         assertEquals("datetime-assistant", result.name)
-    }
-
-    @Test
-    fun `retries with context when fallback matches and history exists`() {
-        val fallbackId = UUID.randomUUID()
-        val fallbackSkill = Skill(id = fallbackId, name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
-
-        whenever(embeddingModel.embed(any<String>())).thenReturn(Response(embedding))
-        val segment = TextSegment.from("general", Metadata.from("skillId", fallbackId.toString()))
-        val match = EmbeddingMatch(0.75, "1", embedding, segment)
-        // Both passes return fallback — context retry doesn't find a better match
-        whenever(embeddingStore.search(any<EmbeddingSearchRequest>()))
-            .thenReturn(EmbeddingSearchResult(listOf(match)))
-            .thenReturn(EmbeddingSearchResult(listOf(match)))
-        whenever(skillRepository.findById(fallbackId)).thenReturn(Optional.of(fallbackSkill))
-
-        val history = listOf(
-            ConversationMessage(role = "user", content = "What time is it in Tokyo?"),
-            ConversationMessage(role = "assistant", content = "It is 3:00 PM.")
-        )
-
-        val result = routerService.route("thanks", history)
-
-        assertEquals("general-assistant", result.name)
-        // Context retry attempted since fallback matched with history
-        verify(embeddingModel, times(2)).embed(any<String>())
     }
 
     @Test
@@ -146,38 +125,7 @@ class SkillRouterServiceTest {
     }
 
     @Test
-    fun `retries with context when fallback matches and finds specialist`() {
-        val fallbackId = UUID.randomUUID()
-        val fallbackSkill = Skill(id = fallbackId, name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
-        val specialistId = UUID.randomUUID()
-        val specialistSkill = Skill(id = specialistId, name = "datetime-assistant", description = "time help", systemPrompt = "prompt", toolNames = listOf("DateTimeTool"))
-        val history = listOf(
-            ConversationMessage(role = "user", content = "What time is it in Tokyo?"),
-            ConversationMessage(role = "assistant", content = "It is 3:00 PM in Tokyo.")
-        )
-
-        whenever(embeddingModel.embed(any<String>())).thenReturn(Response(embedding))
-
-        val fallbackSegment = TextSegment.from("general", Metadata.from("skillId", fallbackId.toString()))
-        val fallbackMatch = EmbeddingMatch(0.7, "1", embedding, fallbackSegment)
-        val specialistSegment = TextSegment.from("time help", Metadata.from("skillId", specialistId.toString()))
-        val specialistMatch = EmbeddingMatch(0.85, "2", embedding, specialistSegment)
-
-        whenever(embeddingStore.search(any<EmbeddingSearchRequest>()))
-            .thenReturn(EmbeddingSearchResult(listOf(fallbackMatch)))
-            .thenReturn(EmbeddingSearchResult(listOf(specialistMatch)))
-        whenever(skillRepository.findById(fallbackId)).thenReturn(Optional.of(fallbackSkill))
-        whenever(skillRepository.findById(specialistId)).thenReturn(Optional.of(specialistSkill))
-
-        val result = routerService.route("yes", history)
-
-        assertEquals("datetime-assistant", result.name)
-        verify(embeddingModel).embed("yes")
-        verify(embeddingModel).embed(argThat<String> { contains("Previous assistant response: It is 3:00 PM in Tokyo.") && endsWith("\nCurrent message: yes") })
-    }
-
-    @Test
-    fun `skips context retry when direct match is a specialist skill`() {
+    fun `routes to specialist on single embedding pass`() {
         val skillId = UUID.randomUUID()
         val skill = Skill(id = skillId, name = "horticulturalist", description = "gardening", systemPrompt = "prompt", toolNames = emptyList())
         val history = listOf(
@@ -213,74 +161,76 @@ class SkillRouterServiceTest {
         assertEquals("general-assistant", result.name)
     }
 
+    // --- New enrichment tests ---
+
     @Test
-    fun `retries with context when score is below threshold and history exists`() {
+    fun `calls enrichment service with message and history`() {
+        val fallbackSkill = Skill(name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
+        val history = listOf(
+            ConversationMessage(role = "user", content = "What time is it?"),
+            ConversationMessage(role = "assistant", content = "It is 3:00 PM.")
+        )
+
+        whenever(embeddingModel.embed(any<String>())).thenReturn(Response(embedding))
+        whenever(embeddingStore.search(any<EmbeddingSearchRequest>())).thenReturn(EmbeddingSearchResult(emptyList()))
+        whenever(skillRepository.findByName("general-assistant")).thenReturn(fallbackSkill)
+
+        routerService.route("thanks", history)
+
+        verify(queryEnrichmentService).enrich("thanks", history)
+    }
+
+    @Test
+    fun `uses enriched query for embedding search`() {
+        val fallbackSkill = Skill(name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
+        val history = listOf(
+            ConversationMessage(role = "user", content = "What time is it in Tokyo?"),
+            ConversationMessage(role = "assistant", content = "It is 3:00 PM.")
+        )
+
+        whenever(queryEnrichmentService.enrich(any(), any())).thenReturn("enriched time zone query about Tokyo")
+        whenever(embeddingModel.embed(any<String>())).thenReturn(Response(embedding))
+        whenever(embeddingStore.search(any<EmbeddingSearchRequest>())).thenReturn(EmbeddingSearchResult(emptyList()))
+        whenever(skillRepository.findByName("general-assistant")).thenReturn(fallbackSkill)
+
+        routerService.route("yes", history)
+
+        verify(embeddingModel).embed("enriched time zone query about Tokyo")
+    }
+
+    @Test
+    fun `enriched query routes to specialist that raw query would miss`() {
         val specialistId = UUID.randomUUID()
         val specialistSkill = Skill(id = specialistId, name = "datetime-assistant", description = "time help", systemPrompt = "prompt", toolNames = listOf("DateTimeTool"))
+
+        whenever(queryEnrichmentService.enrich(any(), any())).thenReturn("What is the current time in Tokyo, Japan?")
+        whenever(embeddingModel.embed(any<String>())).thenReturn(Response(embedding))
+        val segment = TextSegment.from("time help", Metadata.from("skillId", specialistId.toString()))
+        val match = EmbeddingMatch(0.9, "1", embedding, segment)
+        whenever(embeddingStore.search(any<EmbeddingSearchRequest>())).thenReturn(EmbeddingSearchResult(listOf(match)))
+        whenever(skillRepository.findById(specialistId)).thenReturn(Optional.of(specialistSkill))
+
         val history = listOf(
             ConversationMessage(role = "user", content = "What time is it in Tokyo?"),
             ConversationMessage(role = "assistant", content = "It is 3:00 PM in Tokyo.")
         )
-
-        whenever(embeddingModel.embed(any<String>())).thenReturn(Response(embedding))
-
-        // First pass: terse message scores below min threshold — findTopSkill returns null
-        val lowMatch = EmbeddingMatch(0.3, "1", embedding, TextSegment.from("time help", Metadata.from("skillId", specialistId.toString())))
-        // Second pass: context-enriched query scores above threshold
-        val specialistSegment = TextSegment.from("time help", Metadata.from("skillId", specialistId.toString()))
-        val specialistMatch = EmbeddingMatch(0.85, "2", embedding, specialistSegment)
-
-        whenever(embeddingStore.search(any<EmbeddingSearchRequest>()))
-            .thenReturn(EmbeddingSearchResult(listOf(lowMatch)))
-            .thenReturn(EmbeddingSearchResult(listOf(specialistMatch)))
-        whenever(skillRepository.findById(specialistId)).thenReturn(Optional.of(specialistSkill))
 
         val result = routerService.route("yes", history)
 
         assertEquals("datetime-assistant", result.name)
-        verify(embeddingModel, times(2)).embed(any<String>())
     }
 
     @Test
-    fun `does not retry with context when history is empty`() {
-        val fallbackId = UUID.randomUUID()
-        val fallbackSkill = Skill(id = fallbackId, name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
+    fun `falls back when enriched query still has no match`() {
+        val fallbackSkill = Skill(name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
 
+        whenever(queryEnrichmentService.enrich(any(), any())).thenReturn("enriched but still vague query")
         whenever(embeddingModel.embed(any<String>())).thenReturn(Response(embedding))
-        val segment = TextSegment.from("general", Metadata.from("skillId", fallbackId.toString()))
-        val match = EmbeddingMatch(0.7, "1", embedding, segment)
-        whenever(embeddingStore.search(any<EmbeddingSearchRequest>())).thenReturn(EmbeddingSearchResult(listOf(match)))
-        whenever(skillRepository.findById(fallbackId)).thenReturn(Optional.of(fallbackSkill))
+        whenever(embeddingStore.search(any<EmbeddingSearchRequest>())).thenReturn(EmbeddingSearchResult(emptyList()))
+        whenever(skillRepository.findByName("general-assistant")).thenReturn(fallbackSkill)
 
-        routerService.route("yes", emptyList())
+        val result = routerService.route("do it")
 
-        verify(embeddingModel, times(1)).embed(any<String>())
-    }
-
-    @Test
-    fun `context retry uses last assistant message only`() {
-        val fallbackId = UUID.randomUUID()
-        val fallbackSkill = Skill(id = fallbackId, name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
-        val history = listOf(
-            ConversationMessage(role = "user", content = "First question"),
-            ConversationMessage(role = "assistant", content = "First response"),
-            ConversationMessage(role = "user", content = "What time is it in Tokyo?"),
-            ConversationMessage(role = "assistant", content = "It is 3:00 PM in Tokyo.")
-        )
-
-        whenever(embeddingModel.embed(any<String>())).thenReturn(Response(embedding))
-        val segment = TextSegment.from("general", Metadata.from("skillId", fallbackId.toString()))
-        val match = EmbeddingMatch(0.7, "1", embedding, segment)
-        whenever(embeddingStore.search(any<EmbeddingSearchRequest>())).thenReturn(EmbeddingSearchResult(listOf(match)))
-        whenever(skillRepository.findById(fallbackId)).thenReturn(Optional.of(fallbackSkill))
-
-        routerService.route("yes", history)
-
-        verify(embeddingModel).embed(argThat<String> {
-            contains("Previous assistant response: It is 3:00 PM in Tokyo.")
-                && !contains("First response")
-                && !contains("First question")
-                && endsWith("\nCurrent message: yes")
-        })
+        assertEquals("general-assistant", result.name)
     }
 }

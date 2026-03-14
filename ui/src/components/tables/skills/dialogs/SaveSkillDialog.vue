@@ -48,7 +48,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { skillService } from '@/services'
-import SkillDetailsForm from './SkillDetailsForm.vue'
+import SkillDetailsForm from '../SkillDetailsForm.vue'
 import type { SkillFormData, UpdateSkillRequest } from '@/types/skill'
 
 interface Props {

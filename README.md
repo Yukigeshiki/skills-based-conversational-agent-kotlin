@@ -92,9 +92,9 @@ References are managed through the UI's skill expanded view or the REST API. Con
 Messages are routed through a cascade of strategies:
 
 1. **Name mention** — if the message contains a skill name (case-insensitive, ignoring hyphens/underscores), that skill is used directly
-2. **Embedding similarity** — the message is embedded via OpenAI text-embedding-3-small (1536-dim) and matched against skill embeddings in pgvector; the highest-scoring non-fallback skill wins, provided it meets the minimum similarity threshold (default 0.55)
-3. **Context retry** — if no match meets the minimum similarity threshold, or if the fallback skill wins, and conversation history exists, the last agent message is prepended to the query, and similarity search is retried — this handles terse follow-ups like "yes" or "do it" that lack semantic content on their own
-4. **Fallback** — if no match meets the minimum similarity threshold after all attempts, or no better match is found, the `general-assistant` skill handles the request
+2. **Query enrichment** — when conversation history exists, a light model (Claude Haiku) enriches the user message before embedding — resolving pronouns, expanding terse follow-ups like "yes" or "do it" into self-contained queries, and adding domain context for stronger semantic signal
+3. **Embedding similarity** — the (enriched) message is embedded via OpenAI text-embedding-3-small (1536-dim) and matched against skill embeddings in pgvector; the highest-scoring non-fallback skill wins, provided it meets the minimum similarity threshold (default 0.60)
+4. **Fallback** — if no match meets the minimum similarity threshold, the `general-assistant` skill handles the request
 5. **Response validation reroute** — after a specialist skill responds, a light model (Claude Haiku) classifies the response as adequate or inadequate; if the skill deflected or failed to answer, the request is automatically rerouted to the `general-assistant` fallback for a second attempt
 
 ## Tools

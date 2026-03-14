@@ -18,10 +18,9 @@ import java.util.UUID
 /**
  * Routes user messages to the most relevant skill using embedding similarity search.
  *
- * Picks the highest-scoring skill above [SkillRoutingProperties.minSimilarityThreshold].
- * If the fallback skill wins and conversation history is available, retries with recent
- * messages prepended so that terse follow-ups like "yes" inherit the conversation's
- * semantic context.
+ * Before embedding, enriches the user query via [QueryEnrichmentService] to add domain
+ * context and resolve ambiguous references. Picks the highest-scoring skill above
+ * [SkillRoutingProperties.minSimilarityThreshold], falling back to the general-assistant.
  */
 @Service
 class SkillRouterService(
@@ -29,7 +28,8 @@ class SkillRouterService(
     private val embeddingStore: EmbeddingStore<TextSegment>,
     private val skillRepository: SkillRepository,
     private val skillCacheService: SkillCacheService,
-    private val properties: SkillRoutingProperties
+    private val properties: SkillRoutingProperties,
+    private val queryEnrichmentService: QueryEnrichmentService
 ) {
 
     companion object {
@@ -42,10 +42,9 @@ class SkillRouterService(
      * Finds the best-matching skill for a user message using embedding similarity.
      *
      * First checks if the user explicitly mentions a skill by name. If so, routes
-     * directly to that skill. Otherwise, routes to the highest-scoring skill via
-     * embedding similarity, requiring a minimum similarity score. If the fallback
-     * skill wins and conversation history is available, retries with context from
-     * recent messages.
+     * directly to that skill. When conversation history exists, enriches the query
+     * with domain context via [QueryEnrichmentService] to resolve terse follow-ups.
+     * Routes to the highest-scoring skill via a single embedding similarity pass.
      */
     fun route(userMessage: String, conversationHistory: List<ConversationMessage> = emptyList()): Skill {
         log.debug { "Routing message to skill" }
@@ -55,23 +54,20 @@ class SkillRouterService(
             return skill
         }
 
-        log.debug { "Pass 1 — direct match for query: \"$userMessage\"" }
-        val directMatch = findTopSkill(userMessage)
-
-        if (directMatch != null && directMatch.skill.name != FALLBACK_SKILL_NAME) {
-            return directMatch.skill
+        log.debug { "Routing query: \"$userMessage\"" }
+        val query = if (conversationHistory.isNotEmpty()) {
+            queryEnrichmentService.enrich(userMessage, conversationHistory)
+        } else {
+            userMessage
         }
 
-        if ((directMatch == null || directMatch.skill.name == FALLBACK_SKILL_NAME) && conversationHistory.isNotEmpty()) {
-            val contextualQuery = buildContextualQuery(userMessage, conversationHistory)
-            log.debug { "Pass 2 — fallback matched, retrying with context:\n$contextualQuery" }
-            val contextMatch = findTopSkill(contextualQuery)
-            if (contextMatch != null) return contextMatch.skill
+        val match = findTopSkill(query)
+
+        if (match != null && match.skill.name != FALLBACK_SKILL_NAME) {
+            return match.skill
         }
 
-        if (directMatch != null) return directMatch.skill
-
-        log.info { "No embedding matches found, falling back to: $FALLBACK_SKILL_NAME" }
+        log.info { "No specialist match found, falling back to: $FALLBACK_SKILL_NAME" }
         return skillRepository.findByName(FALLBACK_SKILL_NAME)
             ?: run {
                 log.warn { "Fallback skill not found: name=${FALLBACK_SKILL_NAME}" }
@@ -146,19 +142,5 @@ class SkillRouterService(
         } ?: return null
 
         return ScoredSkill(skill, topMatch.score())
-    }
-
-    /**
-     * Prepends the last assistant message from [conversationHistory] to [userMessage]
-     * for context-aware embedding search.
-     */
-    private fun buildContextualQuery(userMessage: String, conversationHistory: List<ConversationMessage>): String {
-        val lastAssistantMessage = conversationHistory
-            .lastOrNull { it.role == "assistant" }
-            ?: return userMessage
-
-        return "Follow-up in an ongoing conversation.\n" +
-            "Previous assistant response: ${lastAssistantMessage.content}\n" +
-            "Current message: $userMessage"
     }
 }
