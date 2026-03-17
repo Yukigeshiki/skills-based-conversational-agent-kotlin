@@ -4,7 +4,7 @@
 [![Agent Build](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/agent-build.yml/badge.svg)](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/agent-build.yml)
 [![UI Build](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/ui-build.yml/badge.svg)](https://github.com/Yukigeshiki/skills-based-conversational-agent-kotlin/actions/workflows/ui-build.yml)
 
-A conversational agent built with Kotlin and Spring Boot. User messages are routed to skills via a cascade of skill routing strategies, then executed through a tool-use loop powered by Claude (LangChain4j). The UI streams events in real time via SSE.
+A conversational agent built with Kotlin and Spring Boot. User messages are routed to skills via a cascade of skill routing strategies, then executed through a tool-use loop powered by Claude (LangChain4j). The conversation flow is modelled as LangGraph4j state graphs, with optional PostgreSQL-backed checkpointing for audit trails and workflow resumption. The UI streams events in real time via SSE.
 
 ## How It Works
 
@@ -68,6 +68,41 @@ pnpm dev  # port 5173
 ```
 
 The UI provides a chat interface and a skills management page for creating, updating, and deleting skills and their reference documents.
+
+## Graph Architecture
+
+The conversation flow is modelled as two LangGraph4j state graphs, each with a clear separation between mutable graph state and immutable infrastructure context captured in node closures.
+
+### Orchestration Graph
+
+Handles the high-level request lifecycle. Acyclic flow with conditional edges for validation and fallback rerouting.
+
+```
+START -> load_memory -> route_skill -> execute_skill -> conditional
+                                                         -> END (fallback skill)
+                                                         -> validate_response -> conditional
+                                                                                  -> END (adequate)
+                                                                                  -> reroute_fallback -> END
+```
+
+### Agent Loop Graph
+
+Handles the LLM tool-execution cycle within each plan step. Cyclic graph that repeats until the LLM responds with text or the iteration limit is reached.
+
+```
+START -> call_llm -> conditional -> execute_tools -> call_llm (cycle)
+                                 -> END (when done)
+```
+
+### Checkpointing
+
+Both graphs support optional PostgreSQL-backed checkpointing, persisting full workflow state as JSONB after each node transition. Disabled by default; enable with:
+
+```properties
+agent.checkpointing-enabled=true
+```
+
+When enabled, checkpoints are stored in the `graph_checkpoints` table and keyed by conversation ID (orchestration graph) or `agent:{conversationId}:{nanoTime}` (agent loop graph). Checkpoint state is human-readable and queryable via standard PostgreSQL JSONB operators. Custom Jackson serialization handles Langchain4j's ChatMessage hierarchy.
 
 ## Skills
 
@@ -156,7 +191,7 @@ curl http://localhost:9090/api/tools                     # List registered tool 
 ## Project Structure
 
 ```
-services/agent/   Kotlin, Spring Boot 3.5.7, LangChain4j, Gradle
+services/agent/   Kotlin, Spring Boot 3.5.7, LangChain4j, LangGraph4j, Gradle
 ui/               Vue 3, TypeScript, Vite, Tailwind CSS
 ```
 
