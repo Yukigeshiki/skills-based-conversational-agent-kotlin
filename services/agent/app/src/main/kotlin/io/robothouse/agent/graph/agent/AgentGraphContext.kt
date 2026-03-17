@@ -8,6 +8,8 @@ import io.robothouse.agent.listener.AgentEventListener
 import io.robothouse.agent.model.AgentEvent
 import io.robothouse.agent.model.TaskMemory
 import io.robothouse.agent.model.ToolExecutionStep
+import org.bsc.langgraph4j.checkpoint.BaseCheckpointSaver
+import org.bsc.langgraph4j.serializer.StateSerializer
 
 typealias EmitEventFn = (AgentEventListener, () -> AgentEvent) -> Unit
 typealias ExecuteToolFn = (ToolExecutionRequest, Map<String, ToolExecutor>, Int, AgentEventListener) -> ToolExecutionStep
@@ -33,5 +35,8 @@ data class AgentGraphContext(
     val timeoutMillis: Long,
     val emitEvent: EmitEventFn,
     val executeTool: ExecuteToolFn,
-    val checkTimeout: CheckTimeoutFn
+    val checkTimeout: CheckTimeoutFn,
+    val stateSerializer: StateSerializer<AgentGraphState>? = null,
+    val checkpointSaver: BaseCheckpointSaver? = null,
+    val conversationId: String? = null
 )

@@ -38,7 +38,7 @@ class DynamicAgentServiceTest {
     private val taskPlanningService: TaskPlanningService = mock()
     private val referenceRetrievalService: ReferenceRetrievalService = mock()
     private val skillService: SkillService = mock()
-    private val agentProperties = AgentProperties(maxIterations = 10, toolExecutionTimeoutSeconds = 30, maxPlanSteps = 10)
+    private val agentProperties = AgentProperties(maxIterations = 10, toolExecutionTimeoutSeconds = 30, maxPlanSteps = 10, checkpointingEnabled = false)
 
     private val skill = Skill(
         name = "test-skill",
@@ -133,7 +133,7 @@ class DynamicAgentServiceTest {
             .aiMessage(AiMessage.from(listOf(toolRequest)))
             .build()
 
-        val properties = AgentProperties(maxIterations = 3, toolExecutionTimeoutSeconds = 30, maxPlanSteps = 10)
+        val properties = AgentProperties(maxIterations = 3, toolExecutionTimeoutSeconds = 30, maxPlanSteps = 10, checkpointingEnabled = false)
         val model = fakeChatModel(alwaysToolCall)
         val limitedService = DynamicAgentService(model, toolService, properties, taskPlanningService, referenceRetrievalService, skillService)
 
@@ -159,7 +159,7 @@ class DynamicAgentServiceTest {
             ChatResponse.builder().aiMessage(AiMessage.from(listOf(toolRequest))).build()
         )
 
-        val properties = AgentProperties(maxIterations = 10, toolExecutionTimeoutSeconds = 0, maxPlanSteps = 10)
+        val properties = AgentProperties(maxIterations = 10, toolExecutionTimeoutSeconds = 0, maxPlanSteps = 10, checkpointingEnabled = false)
         val timeoutService = DynamicAgentService(model, toolService, properties, taskPlanningService, referenceRetrievalService, skillService)
 
         assertThrows<TimeoutException> {

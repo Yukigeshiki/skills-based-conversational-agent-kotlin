@@ -5,6 +5,9 @@ import io.robothouse.agent.service.ConversationMemoryService
 import io.robothouse.agent.service.DynamicAgentService
 import io.robothouse.agent.service.ResponseValidationService
 import io.robothouse.agent.service.SkillRouterService
+import io.robothouse.agent.graph.orchestration.OrchestrationGraphState
+import org.bsc.langgraph4j.checkpoint.BaseCheckpointSaver
+import org.bsc.langgraph4j.serializer.StateSerializer
 
 /**
  * Immutable context holding the service dependencies needed by orchestration
@@ -17,5 +20,7 @@ data class OrchestrationGraphContext(
     val dynamicAgentService: DynamicAgentService,
     val conversationMemoryService: ConversationMemoryService,
     val responseValidationService: ResponseValidationService,
-    val listener: AgentEventListener
+    val listener: AgentEventListener,
+    val stateSerializer: StateSerializer<OrchestrationGraphState>? = null,
+    val checkpointSaver: BaseCheckpointSaver? = null
 )

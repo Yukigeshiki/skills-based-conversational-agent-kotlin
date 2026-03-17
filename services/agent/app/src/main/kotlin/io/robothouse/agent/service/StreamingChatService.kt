@@ -5,11 +5,16 @@ import io.robothouse.agent.config.AgentProperties
 import io.robothouse.agent.graph.orchestration.OrchestrationGraphBuilder
 import io.robothouse.agent.graph.orchestration.OrchestrationGraphContext
 import io.robothouse.agent.graph.orchestration.OrchestrationGraphState
+import io.robothouse.agent.graph.checkpoint.OrchestrationGraphStateSerializer
+import io.robothouse.agent.graph.checkpoint.PostgresCheckpointSaver
 import io.robothouse.agent.graph.unwrapGraphException
+import org.bsc.langgraph4j.RunnableConfig
 import io.robothouse.agent.listener.AgentEventListener
 import io.robothouse.agent.model.AgentEvent
 import io.robothouse.agent.model.ConversationMessage
 import io.robothouse.agent.util.log
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 import java.util.Collections
@@ -34,7 +39,9 @@ class StreamingChatService(
     private val conversationMemoryService: ConversationMemoryService,
     private val responseValidationService: ResponseValidationService,
     private val agentProperties: AgentProperties,
-    private val objectMapper: ObjectMapper
+    private val objectMapper: ObjectMapper,
+    @param:Autowired(required = false) private val orchestrationGraphStateSerializer: OrchestrationGraphStateSerializer? = null,
+    @param:Autowired(required = false) @param:Qualifier("orchestrationCheckpointSaver") private val checkpointSaver: PostgresCheckpointSaver? = null
 ) {
 
     companion object {
@@ -97,7 +104,9 @@ class StreamingChatService(
                         dynamicAgentService = dynamicAgentService,
                         conversationMemoryService = conversationMemoryService,
                         responseValidationService = responseValidationService,
-                        listener = listener
+                        listener = listener,
+                        stateSerializer = orchestrationGraphStateSerializer,
+                        checkpointSaver = checkpointSaver
                     )
 
                     val compiledGraph = OrchestrationGraphBuilder.build(ctx)
@@ -107,8 +116,19 @@ class StreamingChatService(
                         OrchestrationGraphState.USER_MESSAGE to userMessage
                     )
 
+                    val runnableConfig = checkpointSaver?.let {
+                        RunnableConfig.builder()
+                            .threadId(resolvedConversationId)
+                            .build()
+                    }
+
                     val finalState = try {
-                        compiledGraph.invoke(initialState).orElseThrow {
+                        val result = if (runnableConfig != null) {
+                            compiledGraph.invoke(initialState, runnableConfig)
+                        } else {
+                            compiledGraph.invoke(initialState)
+                        }
+                        result.orElseThrow {
                             log.warn { "Orchestration graph produced no final state for conversation: id=$resolvedConversationId" }
                             IllegalStateException("Orchestration graph produced no final state")
                         }

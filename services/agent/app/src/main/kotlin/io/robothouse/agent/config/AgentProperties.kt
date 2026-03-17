@@ -7,8 +7,9 @@ import org.springframework.validation.annotation.Validated
 /**
  * Configuration properties for the agent execution loop.
  *
- * Controls limits on tool executions, timeouts, and plan step counts
- * to prevent runaway agent loops.
+ * Controls limits on tool executions, timeouts, plan step counts,
+ * and whether graph checkpointing is enabled for persistence and
+ * audit trails.
  */
 @Validated
 @ConfigurationProperties(prefix = "agent")
@@ -20,5 +21,7 @@ data class AgentProperties(
     val toolExecutionTimeoutSeconds: Long,
 
     @field:Min(1, message = "maxPlanSteps must be at least 1")
-    val maxPlanSteps: Int
+    val maxPlanSteps: Int,
+
+    val checkpointingEnabled: Boolean
 )

@@ -23,7 +23,8 @@ class TaskPlanningServiceTest {
     private val agentProperties = AgentProperties(
         maxIterations = 10,
         toolExecutionTimeoutSeconds = 30,
-        maxPlanSteps = 5
+        maxPlanSteps = 5,
+        checkpointingEnabled = false
     )
 
     private val skillCacheService: SkillCacheService = mock()

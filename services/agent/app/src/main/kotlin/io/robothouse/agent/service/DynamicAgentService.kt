@@ -13,7 +13,10 @@ import io.robothouse.agent.entity.Skill
 import io.robothouse.agent.graph.agent.AgentGraphBuilder
 import io.robothouse.agent.graph.agent.AgentGraphContext
 import io.robothouse.agent.graph.agent.AgentGraphState
+import io.robothouse.agent.graph.checkpoint.AgentGraphStateSerializer
+import io.robothouse.agent.graph.checkpoint.PostgresCheckpointSaver
 import io.robothouse.agent.graph.unwrapGraphException
+import org.bsc.langgraph4j.RunnableConfig
 import io.robothouse.agent.listener.AgentEventListener
 import io.robothouse.agent.model.AgentEvent
 import io.robothouse.agent.model.AgentResponse
@@ -24,6 +27,7 @@ import io.robothouse.agent.model.RetrievedChunk
 import io.robothouse.agent.model.TaskMemory
 import io.robothouse.agent.model.ToolExecutionStep
 import io.robothouse.agent.util.log
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
 import java.util.concurrent.TimeoutException
@@ -42,7 +46,9 @@ class DynamicAgentService(
     private val agentProperties: AgentProperties,
     private val taskPlanningService: TaskPlanningService,
     private val referenceRetrievalService: ReferenceRetrievalService,
-    private val skillService: SkillService
+    private val skillService: SkillService,
+    @param:Autowired(required = false) private val agentGraphStateSerializer: AgentGraphStateSerializer? = null,
+    @param:Autowired(required = false) @param:Qualifier("agentCheckpointSaver") private val checkpointSaver: PostgresCheckpointSaver? = null
 ) {
 
     /**
@@ -55,14 +61,17 @@ class DynamicAgentService(
         skill: Skill,
         userMessage: String,
         listener: AgentEventListener = AgentEventListener.NOOP,
-        conversationHistory: List<ConversationMessage> = emptyList()
+        conversationHistory: List<ConversationMessage> = emptyList(),
+        conversationId: String? = null
     ): AgentResponse {
         log.debug { "Processing chat request for skill: name=${skill.name}, tools=${skill.toolNames}" }
 
+        // 1. Decompose the request into a task plan (defaults to single step for simple requests)
         val plan = taskPlanningService.createPlan(userMessage, conversationHistory)
         log.debug { "Created plan with ${plan.steps.size} step(s): ${plan.reasoning}" }
         emitEvent(listener) { AgentEvent.PlanCreatedEvent(plan = plan) }
 
+        // 2. Fast path: single-step plans skip the per-step loop and execute directly
         if (plan.steps.size <= 1) {
             val retrievedChunks = skill.id?.let { referenceRetrievalService.retrieveChunks(it, userMessage) } ?: emptyList()
             val effectiveSystemPrompt = buildSystemPrompt(skill, retrievedChunks)
@@ -76,16 +85,19 @@ class DynamicAgentService(
                 executors,
                 skill.name,
                 listener,
-                conversationHistory = conversationHistory
+                conversationHistory = conversationHistory,
+                conversationId = conversationId
             )
             return response.copy(plan = plan)
         }
 
+        // 3. Multi-step path: execute each step sequentially, stopping on failure
         val stepResults = mutableListOf<PlanStepResult>()
         val allToolSteps = mutableListOf<ToolExecutionStep>()
         var failed = false
 
         for (planStep in plan.steps) {
+            // Skip remaining steps after a failure
             if (failed) {
                 log.debug { "Skipping plan step ${planStep.stepNumber} due to earlier failure" }
                 stepResults.add(
@@ -105,6 +117,7 @@ class DynamicAgentService(
                 continue
             }
 
+            // Resolve the skill for this step (may differ from the routed skill)
             val stepSkill = planStep.skillName?.let { name ->
                 skillService.findByName(name) ?: run {
                     log.warn { "Unknown skill '$name' in plan step ${planStep.stepNumber}, using routed skill" }
@@ -112,6 +125,7 @@ class DynamicAgentService(
                 }
             } ?: skill
 
+            // Prepare the step's context: RAG chunks, system prompt, and tool specs
             val stepChunks = stepSkill.id?.let {
                 referenceRetrievalService.retrieveChunks(it, planStep.description)
             } ?: emptyList()
@@ -128,6 +142,7 @@ class DynamicAgentService(
                 )
             }
 
+            // Build the user message with prior step results for context
             val priorContext = if (stepResults.isNotEmpty()) {
                 val priorSummary = stepResults.joinToString("\n") { result ->
                     "Step ${result.step.stepNumber} (${result.status}): ${result.response}"
@@ -137,9 +152,11 @@ class DynamicAgentService(
                 "Original request: $userMessage\n\nExecute this step: ${planStep.description}"
             }
 
+            // Execute the step via the agent loop graph
             try {
                 val stepResponse = executeStep(
-                    stepSystemPrompt, priorContext, stepSpecs, stepExecutors, stepSkill.name, listener, emitFinalResponse = false
+                    stepSystemPrompt, priorContext, stepSpecs, stepExecutors, stepSkill.name, listener, emitFinalResponse = false,
+                    conversationId = conversationId
                 )
                 allToolSteps.addAll(stepResponse.steps)
                 val stepResult = PlanStepResult(
@@ -177,6 +194,7 @@ class DynamicAgentService(
             }
         }
 
+        // 4. Assemble step results into the final response
         val assembledResponse = assembleResults(stepResults)
 
         log.info { "Completed planned chat for skill: name=${skill.name}, steps=${plan.steps.size}, toolExecutions=${allToolSteps.size}" }
@@ -236,7 +254,8 @@ class DynamicAgentService(
         skillName: String,
         listener: AgentEventListener = AgentEventListener.NOOP,
         emitFinalResponse: Boolean = true,
-        conversationHistory: List<ConversationMessage> = emptyList()
+        conversationHistory: List<ConversationMessage> = emptyList(),
+        conversationId: String? = null
     ): AgentResponse {
         val messages = mutableListOf<ChatMessage>(SystemMessage.from(systemPrompt))
         conversationHistory.forEach { msg ->
@@ -263,7 +282,10 @@ class DynamicAgentService(
             timeoutMillis = agentProperties.toolExecutionTimeoutSeconds * 1000,
             emitEvent = ::emitEvent,
             executeTool = ::executeTool,
-            checkTimeout = ::checkTimeout
+            checkTimeout = ::checkTimeout,
+            stateSerializer = agentGraphStateSerializer,
+            checkpointSaver = checkpointSaver,
+            conversationId = conversationId
         )
 
         val compiledGraph = AgentGraphBuilder.build(ctx)
@@ -275,8 +297,19 @@ class DynamicAgentService(
             AgentGraphState.RESPONSE to ""
         )
 
+        val runnableConfig = checkpointSaver?.let {
+            RunnableConfig.builder()
+                .threadId("agent:${conversationId ?: "unknown"}:${System.nanoTime()}")
+                .build()
+        }
+
         val finalState = try {
-            compiledGraph.invoke(initialState).orElseThrow {
+            val result = if (runnableConfig != null) {
+                compiledGraph.invoke(initialState, runnableConfig)
+            } else {
+                compiledGraph.invoke(initialState)
+            }
+            result.orElseThrow {
                 log.warn { "Agent graph produced no final state for skill: name=$skillName" }
                 IllegalStateException("Agent graph produced no final state")
             }
@@ -301,7 +334,7 @@ class DynamicAgentService(
     /**
      * Deterministically assembles step responses into a final response.
      * Completed results are joined with separators. Failed and skipped steps
-     * are appended as a status summary so no information is lost.
+     * are appended as a status summary, so no information is lost.
      */
     private fun assembleResults(stepResults: List<PlanStepResult>): String {
         val completedResults = stepResults.filter { it.status == PlanStepStatus.COMPLETED }

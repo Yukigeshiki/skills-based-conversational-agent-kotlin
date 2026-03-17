@@ -56,7 +56,8 @@ object OrchestrationGraphBuilder {
         // the graph executes synchronously on a single thread.
         val heldFinalEvent = AtomicReference<AgentEvent.FinalResponseEvent?>()
 
-        val serializer = InMemoryStateSerializer(::OrchestrationGraphState)
+        val serializer = ctx.stateSerializer
+            ?: InMemoryStateSerializer(::OrchestrationGraphState)
         val graph = StateGraph(OrchestrationGraphState.SCHEMA, serializer)
 
         graph.addNode(LOAD_MEMORY, node_async { state: OrchestrationGraphState ->
@@ -101,12 +102,11 @@ object OrchestrationGraphBuilder {
 
         graph.addEdge(REROUTE_FALLBACK, END)
 
-        // The graph is acyclic so the recursion limit is just a safety net.
-        return graph.compile(
-            CompileConfig.builder()
-                .recursionLimit(10)
-                .build()
-        )
+        // The graph is acyclic, so the recursion limit is just a safety net.
+        val compileConfig = CompileConfig.builder()
+            .recursionLimit(10)
+        ctx.checkpointSaver?.let { compileConfig.checkpointSaver(it) }
+        return graph.compile(compileConfig.build())
     }
 
     /**
@@ -185,7 +185,8 @@ object OrchestrationGraphBuilder {
         }
 
         val response = ctx.dynamicAgentService.chat(
-            skill, state.userMessage, effectiveListener, state.conversationHistory
+            skill, state.userMessage, effectiveListener, state.conversationHistory,
+            conversationId = state.conversationId
         )
 
         return mapOf(AGENT_RESPONSE to response)
@@ -228,7 +229,8 @@ object OrchestrationGraphBuilder {
 
         val fallbackSkill = ctx.skillRouterService.findFallbackSkill()
         val response = ctx.dynamicAgentService.chat(
-            fallbackSkill, state.userMessage, ctx.listener, state.conversationHistory
+            fallbackSkill, state.userMessage, ctx.listener, state.conversationHistory,
+            conversationId = state.conversationId
         )
 
         return mapOf(AGENT_RESPONSE to response)

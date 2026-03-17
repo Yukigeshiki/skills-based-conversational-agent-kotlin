@@ -31,7 +31,7 @@ class StreamingChatServiceTest {
     private val dynamicAgentService: DynamicAgentService = mock()
     private val conversationMemoryService: ConversationMemoryService = mock()
     private val responseValidationService: ResponseValidationService = mock()
-    private val agentProperties = AgentProperties(maxIterations = 10, toolExecutionTimeoutSeconds = 30, maxPlanSteps = 10)
+    private val agentProperties = AgentProperties(maxIterations = 10, toolExecutionTimeoutSeconds = 30, maxPlanSteps = 10, checkpointingEnabled = false)
     private val objectMapper: ObjectMapper = jacksonObjectMapper().registerModule(JavaTimeModule())
 
     private lateinit var service: StreamingChatService
@@ -60,7 +60,7 @@ class StreamingChatServiceTest {
     fun `returns SseEmitter with correct timeout`() {
         whenever(skillRouterService.route(any(), any())).thenReturn(skill)
         whenever(conversationMemoryService.getHistory(any())).thenReturn(emptyList())
-        whenever(dynamicAgentService.chat(any(), any(), any(), any())).thenReturn(
+        whenever(dynamicAgentService.chat(any(), any(), any(), any(), anyOrNull())).thenReturn(
             AgentResponse(response = "Hello!")
         )
 
@@ -77,7 +77,7 @@ class StreamingChatServiceTest {
 
         whenever(skillRouterService.route(any(), any())).thenReturn(skill)
         whenever(conversationMemoryService.getHistory(any())).thenReturn(emptyList())
-        whenever(dynamicAgentService.chat(any(), any(), any(), any())).thenAnswer {
+        whenever(dynamicAgentService.chat(any(), any(), any(), any(), anyOrNull())).thenAnswer {
             AgentResponse(response = "Hello!")
         }
 
@@ -98,7 +98,7 @@ class StreamingChatServiceTest {
 
         whenever(skillRouterService.route(any(), any())).thenReturn(skill)
         whenever(conversationMemoryService.getHistory(eq("my-conv-id"))).thenReturn(emptyList())
-        whenever(dynamicAgentService.chat(any(), any(), any(), any())).thenReturn(
+        whenever(dynamicAgentService.chat(any(), any(), any(), any(), anyOrNull())).thenReturn(
             AgentResponse(response = "Hello!")
         )
 
@@ -121,7 +121,7 @@ class StreamingChatServiceTest {
             storedMessages.add(invocation.getArgument(1))
             Unit
         }.whenever(conversationMemoryService).addMessage(any(), any())
-        whenever(dynamicAgentService.chat(any(), any(), any(), any())).thenReturn(
+        whenever(dynamicAgentService.chat(any(), any(), any(), any(), anyOrNull())).thenReturn(
             AgentResponse(response = "Hello!")
         )
 
@@ -147,7 +147,7 @@ class StreamingChatServiceTest {
 
         whenever(skillRouterService.route(any(), any())).thenReturn(skill)
         whenever(conversationMemoryService.getHistory(any())).thenReturn(history)
-        whenever(dynamicAgentService.chat(any(), any(), any(), any())).thenReturn(
+        whenever(dynamicAgentService.chat(any(), any(), any(), any(), anyOrNull())).thenReturn(
             AgentResponse(response = "I remember!")
         )
 
@@ -156,7 +156,7 @@ class StreamingChatServiceTest {
 
         latch.await(5, TimeUnit.SECONDS)
 
-        verify(dynamicAgentService).chat(eq(skill), eq("New message"), any(), eq(history))
+        verify(dynamicAgentService).chat(eq(skill), eq("New message"), any(), eq(history), anyOrNull())
     }
 
     @Test
@@ -165,7 +165,7 @@ class StreamingChatServiceTest {
 
         whenever(skillRouterService.route(any(), any())).thenReturn(skill)
         whenever(conversationMemoryService.getHistory(any())).thenThrow(RuntimeException("Redis down"))
-        whenever(dynamicAgentService.chat(any(), any(), any(), any())).thenReturn(
+        whenever(dynamicAgentService.chat(any(), any(), any(), any(), anyOrNull())).thenReturn(
             AgentResponse(response = "Hello!")
         )
 
@@ -175,7 +175,7 @@ class StreamingChatServiceTest {
         latch.await(5, TimeUnit.SECONDS)
 
         // Should pass empty history when memory fails
-        verify(dynamicAgentService).chat(eq(skill), eq("Hi"), any(), eq(emptyList()))
+        verify(dynamicAgentService).chat(eq(skill), eq("Hi"), any(), eq(emptyList()), anyOrNull())
     }
 
     @Test
@@ -189,7 +189,7 @@ class StreamingChatServiceTest {
             addMessageCallCount++
             if (addMessageCallCount == 2) throw RuntimeException("Redis down")
         }.whenever(conversationMemoryService).addMessage(any(), any())
-        whenever(dynamicAgentService.chat(any(), any(), any(), any())).thenReturn(
+        whenever(dynamicAgentService.chat(any(), any(), any(), any(), anyOrNull())).thenReturn(
             AgentResponse(response = "Hello!")
         )
 
@@ -208,7 +208,7 @@ class StreamingChatServiceTest {
 
         whenever(skillRouterService.route(eq("What time is it?"), any())).thenReturn(skill)
         whenever(conversationMemoryService.getHistory(any())).thenReturn(emptyList())
-        whenever(dynamicAgentService.chat(any(), any(), any(), any())).thenReturn(
+        whenever(dynamicAgentService.chat(any(), any(), any(), any(), anyOrNull())).thenReturn(
             AgentResponse(response = "It's 3pm")
         )
 
@@ -218,7 +218,7 @@ class StreamingChatServiceTest {
         latch.await(5, TimeUnit.SECONDS)
 
         verify(skillRouterService).route(eq("What time is it?"), any())
-        verify(dynamicAgentService).chat(eq(skill), eq("What time is it?"), any(), any())
+        verify(dynamicAgentService).chat(eq(skill), eq("What time is it?"), any(), any(), anyOrNull())
     }
 
     @Test
@@ -247,7 +247,7 @@ class StreamingChatServiceTest {
 
         whenever(skillRouterService.route(any(), any())).thenReturn(skill)
         whenever(conversationMemoryService.getHistory(any())).thenReturn(history)
-        whenever(dynamicAgentService.chat(any(), any(), any(), any())).thenReturn(
+        whenever(dynamicAgentService.chat(any(), any(), any(), any(), anyOrNull())).thenReturn(
             AgentResponse(response = "Sure!")
         )
 
@@ -273,10 +273,10 @@ class StreamingChatServiceTest {
         whenever(skillRouterService.findFallbackSkill()).thenReturn(fallbackSkill)
         whenever(conversationMemoryService.getHistory(any())).thenReturn(emptyList())
         whenever(responseValidationService.isAdequate(any(), any())).thenReturn(false)
-        whenever(dynamicAgentService.chat(eq(skill), any(), any(), any())).thenReturn(
+        whenever(dynamicAgentService.chat(eq(skill), any(), any(), any(), anyOrNull())).thenReturn(
             AgentResponse(response = "I can't help with that")
         )
-        whenever(dynamicAgentService.chat(eq(fallbackSkill), any(), any(), any())).thenReturn(
+        whenever(dynamicAgentService.chat(eq(fallbackSkill), any(), any(), any(), anyOrNull())).thenReturn(
             AgentResponse(response = "Here's the answer!")
         )
 
@@ -285,8 +285,8 @@ class StreamingChatServiceTest {
 
         latch.await(5, TimeUnit.SECONDS)
 
-        verify(dynamicAgentService).chat(eq(skill), any(), any(), any())
-        verify(dynamicAgentService).chat(eq(fallbackSkill), any(), any(), any())
+        verify(dynamicAgentService).chat(eq(skill), any(), any(), any(), anyOrNull())
+        verify(dynamicAgentService).chat(eq(fallbackSkill), any(), any(), any(), anyOrNull())
         verify(skillRouterService).findFallbackSkill()
     }
 
@@ -302,7 +302,7 @@ class StreamingChatServiceTest {
 
         whenever(skillRouterService.route(any(), any())).thenReturn(fallbackSkill)
         whenever(conversationMemoryService.getHistory(any())).thenReturn(emptyList())
-        whenever(dynamicAgentService.chat(any(), any(), any(), any())).thenReturn(
+        whenever(dynamicAgentService.chat(any(), any(), any(), any(), anyOrNull())).thenReturn(
             AgentResponse(response = "Hello!")
         )
 

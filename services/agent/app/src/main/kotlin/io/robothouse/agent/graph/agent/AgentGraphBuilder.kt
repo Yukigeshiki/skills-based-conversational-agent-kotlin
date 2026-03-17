@@ -1,10 +1,10 @@
 package io.robothouse.agent.graph.agent
 
+import io.robothouse.agent.graph.InMemoryStateSerializer
 import dev.langchain4j.data.message.AiMessage
 import dev.langchain4j.data.message.SystemMessage
 import dev.langchain4j.data.message.ToolExecutionResultMessage
 import dev.langchain4j.model.chat.request.ChatRequest
-import io.robothouse.agent.graph.InMemoryStateSerializer
 import io.robothouse.agent.graph.agent.AgentGraphState.Companion.DONE
 import io.robothouse.agent.graph.agent.AgentGraphState.Companion.ITERATION
 import io.robothouse.agent.graph.agent.AgentGraphState.Companion.MESSAGES
@@ -52,7 +52,8 @@ object AgentGraphBuilder {
      * per-invocation context.
      */
     fun build(ctx: AgentGraphContext): CompiledGraph<AgentGraphState> {
-        val serializer = InMemoryStateSerializer(::AgentGraphState)
+        val serializer = ctx.stateSerializer
+            ?: InMemoryStateSerializer(::AgentGraphState)
         val graph = StateGraph(AgentGraphState.SCHEMA, serializer)
 
         graph.addNode(CALL_LLM, node_async { state: AgentGraphState ->
@@ -77,11 +78,10 @@ object AgentGraphBuilder {
         // call_llm that detects max iterations exceeded and exits. The multiplier
         // includes margin beyond the theoretical max of (maxIterations * 2 + 1)
         // as a safety net — actual iteration control is enforced in the call_llm node.
-        return graph.compile(
-            CompileConfig.builder()
-                .recursionLimit(ctx.maxIterations * 3 + 1)
-                .build()
-        )
+        val compileConfig = CompileConfig.builder()
+            .recursionLimit(ctx.maxIterations * 3 + 1)
+        ctx.checkpointSaver?.let { compileConfig.checkpointSaver(it) }
+        return graph.compile(compileConfig.build())
     }
 
     /**
