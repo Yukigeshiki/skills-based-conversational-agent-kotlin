@@ -5,6 +5,7 @@ kotlin = "2.1.20"
 kotlin-logging = "5.1.0"
 springdoc = "2.8.6"
 langchain4j = "1.0.0-beta5"
+langgraph4j = "1.8.9"
 jtokkit = "1.1.0"
 commons-lang3 = "3.20.0"
 testcontainers = "1.20.4"
@@ -24,6 +25,7 @@ langchain4j-anthropic-spring-boot-starter = { group = "dev.langchain4j", name = 
 langchain4j-pgvector = { group = "dev.langchain4j", name = "langchain4j-pgvector", version.ref = "langchain4j" }
 langchain4j-embeddings-all-minilm-l6-v2 = { group = "dev.langchain4j", name = "langchain4j-embeddings-all-minilm-l6-v2", version.ref = "langchain4j" }
 langchain4j-open-ai-spring-boot-starter = { group = "dev.langchain4j", name = "langchain4j-open-ai-spring-boot-starter", version.ref = "langchain4j" }
+langgraph4j-core = { group = "org.bsc.langgraph4j", name = "langgraph4j-core", version.ref = "langgraph4j" }
 
 spring-boot-starter-data-redis = { group = "org.springframework.boot", name = "spring-boot-starter-data-redis" }
 spring-boot-starter-data-jpa = { group = "org.springframework.boot", name = "spring-boot-starter-data-jpa" }

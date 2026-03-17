@@ -39,6 +39,9 @@ dependencies {
     implementation(libs.langchain4j.pgvector)
     implementation(libs.langchain4j.open.ai.spring.boot.starter)
 
+    // LangGraph4j
+    implementation(libs.langgraph4j.core)
+
     // Tokenizer
     implementation(libs.jtokkit)
 

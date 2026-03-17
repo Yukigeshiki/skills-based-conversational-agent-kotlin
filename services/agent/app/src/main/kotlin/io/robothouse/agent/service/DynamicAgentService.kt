@@ -5,28 +5,28 @@ import dev.langchain4j.agent.tool.ToolSpecification
 import dev.langchain4j.data.message.AiMessage
 import dev.langchain4j.data.message.ChatMessage
 import dev.langchain4j.data.message.SystemMessage
-import dev.langchain4j.data.message.ToolExecutionResultMessage
 import dev.langchain4j.data.message.UserMessage
-import io.robothouse.agent.model.ConversationMessage
 import dev.langchain4j.model.chat.ChatModel
-import dev.langchain4j.model.chat.request.ChatRequest
 import dev.langchain4j.service.tool.ToolExecutor
 import io.robothouse.agent.config.AgentProperties
-import io.robothouse.agent.listener.AgentEventListener
 import io.robothouse.agent.entity.Skill
-import io.robothouse.agent.model.RetrievedChunk
+import io.robothouse.agent.graph.AgentGraphBuilder
+import io.robothouse.agent.graph.AgentGraphContext
+import io.robothouse.agent.graph.AgentGraphState
+import io.robothouse.agent.listener.AgentEventListener
 import io.robothouse.agent.model.AgentEvent
-import io.robothouse.agent.model.AgentIteration
 import io.robothouse.agent.model.AgentResponse
+import io.robothouse.agent.model.ConversationMessage
 import io.robothouse.agent.model.PlanStepResult
 import io.robothouse.agent.model.PlanStepStatus
+import io.robothouse.agent.model.RetrievedChunk
 import io.robothouse.agent.model.TaskMemory
-import io.robothouse.agent.model.ToolCall
 import io.robothouse.agent.model.ToolExecutionStep
-import io.robothouse.agent.model.ToolObservation
 import io.robothouse.agent.util.log
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
+import java.util.concurrent.CompletionException
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeoutException
 
 /**
@@ -221,9 +221,13 @@ class DynamicAgentService(
     }
 
     /**
-     * Runs a single agent loop: sends messages to the LLM and executes
-     * tool calls iteratively until the LLM responds with text or
-     * the maximum number of tool executions is reached.
+     * Runs a single agent loop using a LangGraph4j StateGraph: sends messages
+     * to the LLM and executes tool calls iteratively until the LLM responds
+     * with text or the maximum number of iterations is reached.
+     *
+     * The graph has two nodes forming a cycle:
+     * - call_llm: calls the LLM and decides whether to continue or finish
+     * - execute_tools: executes requested tools and feeds results back
      */
     private fun executeStep(
         systemPrompt: String,
@@ -244,90 +248,55 @@ class DynamicAgentService(
         }
         appendUserMessage(messages, userMessage)
 
-        val steps = mutableListOf<ToolExecutionStep>()
         val taskMemory = TaskMemory()
-        val startTime = System.currentTimeMillis()
-        val timeoutMillis = agentProperties.toolExecutionTimeoutSeconds * 1000
 
-        for (iteration in 1..agentProperties.maxIterations) {
-            checkTimeout(startTime, timeoutMillis)
+        val ctx = AgentGraphContext(
+            agentChatModel = agentChatModel,
+            systemPrompt = systemPrompt,
+            skillName = skillName,
+            specifications = specifications,
+            executors = executors,
+            listener = listener,
+            emitFinalResponse = emitFinalResponse,
+            taskMemory = taskMemory,
+            maxIterations = agentProperties.maxIterations,
+            startTime = System.currentTimeMillis(),
+            timeoutMillis = agentProperties.toolExecutionTimeoutSeconds * 1000,
+            emitEvent = ::emitEvent,
+            executeTool = ::executeTool,
+            checkTimeout = ::checkTimeout
+        )
 
-            if (iteration >= 2) {
-                val scratchpad = taskMemory.toScratchpad()
-                if (scratchpad != null) {
-                    messages[0] = SystemMessage.from("$systemPrompt\n\n## Your work so far\n$scratchpad")
-                }
+        val compiledGraph = AgentGraphBuilder.build(ctx)
+
+        val initialState = mapOf(
+            AgentGraphState.MESSAGES to messages.toList(),
+            AgentGraphState.ITERATION to 1,
+            AgentGraphState.DONE to false,
+            AgentGraphState.RESPONSE to ""
+        )
+
+        val finalState = try {
+            compiledGraph.invoke(initialState).orElseThrow {
+                log.warn { "Agent graph produced no final state for skill: name=$skillName" }
+                IllegalStateException("Agent graph produced no final state")
             }
-
-            log.debug { "Agent loop iteration $iteration for skill: name=$skillName" }
-            emitEvent(listener) { AgentEvent.IterationStartedEvent(iterationNumber = iteration) }
-
-            val requestBuilder = ChatRequest.builder()
-                .messages(messages)
-            if (specifications.isNotEmpty()) {
-                requestBuilder.toolSpecifications(specifications)
-            }
-            val request = requestBuilder.build()
-
-            val response = agentChatModel.chat(request)
-            val aiMessage = response.aiMessage()
-            messages.add(aiMessage)
-
-            if (!aiMessage.hasToolExecutionRequests()) {
-                taskMemory.addIteration(AgentIteration(
-                    iterationNumber = iteration,
-                    thought = aiMessage.text()
-                ))
-                log.info { "Agent completed for skill: name=$skillName, iterations=$iteration, toolExecutions=${steps.size}" }
-                val agentResponse = AgentResponse(
-                    response = aiMessage.text() ?: "",
-                    skill = skillName,
-                    steps = steps,
-                    toolExecutionCount = steps.size,
-                    iterations = taskMemory.iterations
-                )
-                if (emitFinalResponse) {
-                    emitEvent(listener) { AgentEvent.FinalResponseEvent(response = agentResponse.response, skill = agentResponse.skill) }
-                }
-                return agentResponse
-            }
-
-            val thought = aiMessage.text()
-            if (!thought.isNullOrBlank()) {
-                emitEvent(listener) { AgentEvent.ThoughtEvent(iterationNumber = iteration, thought = thought) }
-            }
-            val iterationToolCalls = mutableListOf<ToolCall>()
-            val iterationObservations = mutableListOf<ToolObservation>()
-
-            aiMessage.toolExecutionRequests().forEach { toolRequest ->
-                val step = executeTool(toolRequest, executors, iteration, listener)
-                steps.add(step)
-                iterationToolCalls.add(ToolCall(toolName = step.toolName, arguments = step.arguments))
-                iterationObservations.add(ToolObservation(toolName = step.toolName, result = step.result, error = step.error))
-                messages.add(ToolExecutionResultMessage.from(toolRequest, step.result))
-            }
-
-            taskMemory.addIteration(AgentIteration(
-                iterationNumber = iteration,
-                thought = thought,
-                toolCalls = iterationToolCalls,
-                observations = iterationObservations
-            ))
+        } catch (e: Exception) {
+            val unwrapped = unwrapGraphException(e)
+            log.warn { "Agent graph execution failed for skill: name=$skillName, error=${unwrapped.message}" }
+            throw unwrapGraphException(e)
         }
 
-        log.warn { "Agent reached max iterations: skill=$skillName, maxIterations=${agentProperties.maxIterations}" }
-        val lastAiText = messages.filterIsInstance<AiMessage>().lastOrNull()?.text() ?: ""
-        val agentResponse = AgentResponse(
-            response = lastAiText.ifBlank { "I reached the maximum number of tool executions. Here's what I found so far." },
+        val result = AgentGraphState(finalState.data())
+        log.info { "Agent completed for skill: name=$skillName, toolExecutions=${result.steps.size}" }
+
+        return AgentResponse(
+            response = result.response,
             skill = skillName,
-            steps = steps,
-            toolExecutionCount = steps.size,
+            steps = result.steps,
+            toolExecutionCount = result.steps.size,
             iterations = taskMemory.iterations
         )
-        if (emitFinalResponse) {
-            emitEvent(listener) { AgentEvent.FinalResponseEvent(response = agentResponse.response, skill = agentResponse.skill) }
-        }
-        return agentResponse
     }
 
     /**
@@ -463,5 +432,18 @@ class DynamicAgentService(
         if (System.currentTimeMillis() - startTime > timeoutMillis) {
             throw TimeoutException("Agent loop exceeded timeout of ${agentProperties.toolExecutionTimeoutSeconds} seconds")
         }
+    }
+
+    /**
+     * LangGraph4j wraps exceptions from node execution in CompletableFuture chains.
+     * This unwraps to the original exception, so callers see the expected type
+     * (e.g., TimeoutException rather than a wrapper).
+     */
+    private fun unwrapGraphException(e: Exception): Throwable {
+        var cause: Throwable = e
+        while (cause is CompletionException || cause is ExecutionException) {
+            cause = cause.cause ?: break
+        }
+        return cause
     }
 }
