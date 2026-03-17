@@ -1,4 +1,4 @@
-package io.robothouse.agent.graph
+package io.robothouse.agent.graph.agent
 
 import dev.langchain4j.data.message.ChatMessage
 import io.robothouse.agent.model.ToolExecutionStep

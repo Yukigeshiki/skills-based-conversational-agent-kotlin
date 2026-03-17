@@ -1,14 +1,15 @@
-package io.robothouse.agent.graph
+package io.robothouse.agent.graph.agent
 
 import dev.langchain4j.data.message.AiMessage
 import dev.langchain4j.data.message.SystemMessage
 import dev.langchain4j.data.message.ToolExecutionResultMessage
 import dev.langchain4j.model.chat.request.ChatRequest
-import io.robothouse.agent.graph.AgentGraphState.Companion.DONE
-import io.robothouse.agent.graph.AgentGraphState.Companion.ITERATION
-import io.robothouse.agent.graph.AgentGraphState.Companion.MESSAGES
-import io.robothouse.agent.graph.AgentGraphState.Companion.RESPONSE
-import io.robothouse.agent.graph.AgentGraphState.Companion.STEPS
+import io.robothouse.agent.graph.InMemoryStateSerializer
+import io.robothouse.agent.graph.agent.AgentGraphState.Companion.DONE
+import io.robothouse.agent.graph.agent.AgentGraphState.Companion.ITERATION
+import io.robothouse.agent.graph.agent.AgentGraphState.Companion.MESSAGES
+import io.robothouse.agent.graph.agent.AgentGraphState.Companion.RESPONSE
+import io.robothouse.agent.graph.agent.AgentGraphState.Companion.STEPS
 import io.robothouse.agent.model.AgentEvent
 import io.robothouse.agent.model.AgentIteration
 import io.robothouse.agent.model.ToolCall
@@ -21,9 +22,6 @@ import org.bsc.langgraph4j.GraphDefinition.START
 import org.bsc.langgraph4j.StateGraph
 import org.bsc.langgraph4j.action.AsyncEdgeAction.edge_async
 import org.bsc.langgraph4j.action.AsyncNodeAction.node_async
-import org.bsc.langgraph4j.serializer.StateSerializer
-import java.io.ObjectInput
-import java.io.ObjectOutput
 
 /**
  * Builds and compiles a LangGraph4j StateGraph that implements the agent
@@ -54,8 +52,8 @@ object AgentGraphBuilder {
      * per-invocation context.
      */
     fun build(ctx: AgentGraphContext): CompiledGraph<AgentGraphState> {
-        val stateSerializer = InMemoryStateSerializer()
-        val graph = StateGraph(AgentGraphState.SCHEMA, stateSerializer)
+        val serializer = InMemoryStateSerializer(::AgentGraphState)
+        val graph = StateGraph(AgentGraphState.SCHEMA, serializer)
 
         graph.addNode(CALL_LLM, node_async { state: AgentGraphState ->
             callLlm(state, ctx)
@@ -199,40 +197,5 @@ object AgentGraphBuilder {
             STEPS to newSteps,
             ITERATION to iteration + 1
         )
-    }
-}
-
-/**
- * State serializer for in-memory graph execution that avoids Java serialization.
- *
- * LangGraph4j clones state between node transitions using the serializer's
- * [cloneObject] method. The default implementation serializes to bytes and
- * back, which fails for non-serializable objects like Langchain4j's ChatMessage.
- * This serializer creates a shallow copy of the state data map instead, which
- * is safe because our graph nodes always return new list instances rather than
- * mutating state in place.
- */
-private class InMemoryStateSerializer : StateSerializer<AgentGraphState>(::AgentGraphState) {
-
-    /** Not supported — this graph runs in-memory only without checkpointing. */
-    override fun writeData(data: Map<String, Any>, out: ObjectOutput) {
-        throw UnsupportedOperationException("Byte serialization not supported — this graph runs in-memory only")
-    }
-
-    /** Not supported — this graph runs in-memory only without checkpointing. */
-    override fun readData(input: ObjectInput): Map<String, Any> {
-        throw UnsupportedOperationException("Byte deserialization not supported — this graph runs in-memory only")
-    }
-
-    /**
-     * Creates a copy of the state by shallow-copying the data map and
-     * deep-copying any list values to prevent shared mutable references
-     * between node transitions.
-     */
-    override fun cloneObject(obj: AgentGraphState): AgentGraphState {
-        val copied = obj.data().mapValues { (_, v) ->
-            if (v is List<*>) ArrayList(v) else v
-        }
-        return stateFactory().apply(copied)
     }
 }

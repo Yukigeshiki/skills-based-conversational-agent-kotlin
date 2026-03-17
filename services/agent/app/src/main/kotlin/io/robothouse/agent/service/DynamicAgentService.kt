@@ -10,9 +10,10 @@ import dev.langchain4j.model.chat.ChatModel
 import dev.langchain4j.service.tool.ToolExecutor
 import io.robothouse.agent.config.AgentProperties
 import io.robothouse.agent.entity.Skill
-import io.robothouse.agent.graph.AgentGraphBuilder
-import io.robothouse.agent.graph.AgentGraphContext
-import io.robothouse.agent.graph.AgentGraphState
+import io.robothouse.agent.graph.agent.AgentGraphBuilder
+import io.robothouse.agent.graph.agent.AgentGraphContext
+import io.robothouse.agent.graph.agent.AgentGraphState
+import io.robothouse.agent.graph.unwrapGraphException
 import io.robothouse.agent.listener.AgentEventListener
 import io.robothouse.agent.model.AgentEvent
 import io.robothouse.agent.model.AgentResponse
@@ -25,8 +26,6 @@ import io.robothouse.agent.model.ToolExecutionStep
 import io.robothouse.agent.util.log
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
-import java.util.concurrent.CompletionException
-import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeoutException
 
 /**
@@ -432,18 +431,5 @@ class DynamicAgentService(
         if (System.currentTimeMillis() - startTime > timeoutMillis) {
             throw TimeoutException("Agent loop exceeded timeout of ${agentProperties.toolExecutionTimeoutSeconds} seconds")
         }
-    }
-
-    /**
-     * LangGraph4j wraps exceptions from node execution in CompletableFuture chains.
-     * This unwraps to the original exception, so callers see the expected type
-     * (e.g., TimeoutException rather than a wrapper).
-     */
-    private fun unwrapGraphException(e: Exception): Throwable {
-        var cause: Throwable = e
-        while (cause is CompletionException || cause is ExecutionException) {
-            cause = cause.cause ?: break
-        }
-        return cause
     }
 }

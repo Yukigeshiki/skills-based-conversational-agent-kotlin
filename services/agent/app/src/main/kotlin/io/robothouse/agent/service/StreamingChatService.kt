@@ -2,10 +2,12 @@ package io.robothouse.agent.service
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.robothouse.agent.config.AgentProperties
+import io.robothouse.agent.graph.orchestration.OrchestrationGraphBuilder
+import io.robothouse.agent.graph.orchestration.OrchestrationGraphContext
+import io.robothouse.agent.graph.orchestration.OrchestrationGraphState
+import io.robothouse.agent.graph.unwrapGraphException
 import io.robothouse.agent.listener.AgentEventListener
-import io.robothouse.agent.entity.Skill
 import io.robothouse.agent.model.AgentEvent
-import io.robothouse.agent.model.AgentResponse
 import io.robothouse.agent.model.ConversationMessage
 import io.robothouse.agent.util.log
 import org.springframework.stereotype.Service
@@ -17,15 +19,13 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 
 /**
- * Handles streaming chat interactions by running the agent loop on a
- * virtual thread and forwarding events to an [SseEmitter] as JSON.
+ * Handles streaming chat interactions by running the orchestration graph
+ * on a virtual thread and forwarding events to an [SseEmitter] as JSON.
  *
- * Manages the conversation lifecycle: resolves or generates a conversation ID,
- * persists user and assistant messages to Redis via [ConversationMemoryService],
- * and injects prior conversation history into the agent loop. Emits a
- * [AgentEvent.ConversationStartedEvent] before routing, then relays all events
- * from the agent loop via an [AgentEventListener]. On failure, sends an
- * [AgentEvent.ErrorEvent] before completing the emitter.
+ * Delegates conversation orchestration (memory loading, skill routing,
+ * execution, validation, and fallback rerouting) to a LangGraph4j
+ * StateGraph built by [OrchestrationGraphBuilder]. Manages SSE lifecycle,
+ * heartbeat, and assistant message persistence after graph completion.
  */
 @Service
 class StreamingChatService(
@@ -48,12 +48,11 @@ class StreamingChatService(
     /**
      * Creates an SSE emitter that streams typed agent events for the given message.
      *
-     * Resolves the conversation ID (generating one if absent), stores the user
-     * message in Redis, loads prior history, routes to a skill, and executes
-     * the agent loop on a virtual thread. Each [AgentEvent] is serialized as
-     * a named SSE event. The assistant response is stored after completion.
-     * The emitter timeout is derived from the configured tool execution timeout
-     * plus a buffer.
+     * Builds an orchestration graph that handles memory loading, skill routing,
+     * execution, response validation, and optional fallback rerouting. Each
+     * [AgentEvent] is serialized as a named SSE event. The assistant response
+     * is stored to Redis after the graph completes. The emitter timeout is
+     * derived from the configured tool execution timeout plus a buffer.
      */
     fun streamChat(userMessage: String, conversationId: String?): SseEmitter {
         val resolvedConversationId = conversationId ?: UUID.randomUUID().toString()
@@ -93,34 +92,43 @@ class StreamingChatService(
                         }
                     }
 
-                    listener.onEvent(AgentEvent.ConversationStartedEvent(conversationId = resolvedConversationId))
+                    val ctx = OrchestrationGraphContext(
+                        skillRouterService = skillRouterService,
+                        dynamicAgentService = dynamicAgentService,
+                        conversationMemoryService = conversationMemoryService,
+                        responseValidationService = responseValidationService,
+                        listener = listener
+                    )
 
-                    val history = try {
-                        val prior = conversationMemoryService.getHistory(resolvedConversationId)
-                        conversationMemoryService.addMessage(
-                            resolvedConversationId,
-                            ConversationMessage(role = "user", content = userMessage)
-                        )
-                        prior
+                    val compiledGraph = OrchestrationGraphBuilder.build(ctx)
+
+                    val initialState = mapOf<String, Any>(
+                        OrchestrationGraphState.CONVERSATION_ID to resolvedConversationId,
+                        OrchestrationGraphState.USER_MESSAGE to userMessage
+                    )
+
+                    val finalState = try {
+                        compiledGraph.invoke(initialState).orElseThrow {
+                            log.warn { "Orchestration graph produced no final state for conversation: id=$resolvedConversationId" }
+                            IllegalStateException("Orchestration graph produced no final state")
+                        }
                     } catch (e: Exception) {
-                        log.warn { "Conversation memory unavailable: ${e.message}" }
-                        listener.onEvent(AgentEvent.WarningEvent(message = "Conversation memory is unavailable — this response won't include prior context"))
-                        emptyList()
+                        val unwrapped = unwrapGraphException(e)
+                        log.warn { "Orchestration graph execution failed for conversation: id=$resolvedConversationId, error=${unwrapped.message}" }
+                        throw unwrapped
                     }
 
-                    val skill = skillRouterService.route(userMessage, history)
-                    listener.onEvent(AgentEvent.SkillMatchedEvent(skillName = skill.name))
-
-                    val response = if (skill.name == SkillRouterService.FALLBACK_SKILL_NAME) {
-                        dynamicAgentService.chat(skill, userMessage, listener, history)
-                    } else {
-                        executeWithValidation(skill, userMessage, listener, history)
-                    }
+                    val result = OrchestrationGraphState(finalState.data())
 
                     try {
                         conversationMemoryService.addMessage(
                             resolvedConversationId,
-                            ConversationMessage(role = "assistant", content = response.response, activities = activities.toList())
+                            ConversationMessage(
+                                role = "assistant",
+                                content = result.agentResponse.response,
+                                skill = result.agentResponse.skill,
+                                activities = activities.toList()
+                            )
                         )
                     } catch (e: Exception) {
                         log.warn { "Failed to store assistant response: ${e.message}" }
@@ -147,40 +155,5 @@ class StreamingChatService(
             }
 
         return emitter
-    }
-
-    /**
-     * Runs a specialist skill with a listener that withholds the [AgentEvent.FinalResponseEvent].
-     * After execution, validates the response. If adequate, emits the held-back final response.
-     * If inadequate, emits a [AgentEvent.SkillReroutedEvent] and reruns via the fallback skill.
-     */
-    private fun executeWithValidation(
-        skill: Skill,
-        userMessage: String,
-        listener: AgentEventListener,
-        history: List<ConversationMessage>
-    ): AgentResponse {
-        var heldFinalResponse: AgentEvent.FinalResponseEvent? = null
-
-        val gatedListener = AgentEventListener { event ->
-            if (event is AgentEvent.FinalResponseEvent) {
-                heldFinalResponse = event
-            } else {
-                listener.onEvent(event)
-            }
-        }
-
-        val response = dynamicAgentService.chat(skill, userMessage, gatedListener, history)
-
-        if (responseValidationService.isAdequate(userMessage, response.response)) {
-            heldFinalResponse?.let { listener.onEvent(it) }
-            return response
-        }
-
-        log.info { "Rerouting from ${skill.name} to ${SkillRouterService.FALLBACK_SKILL_NAME}" }
-        listener.onEvent(AgentEvent.SkillReroutedEvent(fromSkill = skill.name, toSkill = SkillRouterService.FALLBACK_SKILL_NAME))
-        listener.onEvent(AgentEvent.SkillMatchedEvent(skillName = SkillRouterService.FALLBACK_SKILL_NAME))
-        val fallbackSkill = skillRouterService.findFallbackSkill()
-        return dynamicAgentService.chat(fallbackSkill, userMessage, listener, history)
     }
 }
