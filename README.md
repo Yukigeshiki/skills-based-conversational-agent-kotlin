@@ -9,7 +9,7 @@ A conversational agent built with Kotlin and Spring Boot. User messages are rout
 ## How It Works
 
 1. **Skill routing** — the user message is routed to the best-matching skill (see [Skill Routing](#skill-routing) below)
-2. **Planning** — the agent decomposes the request into execution steps; each step can target a different skill for multi-skill workflows
+2. **Planning** — the agent decomposes the request into execution steps with declared dependencies; independent steps run in parallel on virtual threads, dependent steps wait for their prerequisites; each step can target a different skill for multi-skill workflows
 3. **Agent loop** — Claude reasons, calls tools, observes results, and repeats until done (step failure short-circuits remaining steps)
 4. **Validation** — specialist skill responses are validated; inadequate ones are rerouted to the general-assistant fallback
 5. **Streaming** — SSE events stream back throughout (skill matched, thoughts, tool calls, plan steps, response)

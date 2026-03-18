@@ -35,11 +35,19 @@ class TaskPlanningService(
             |
             |## When to use multiple steps
             |
-            |Use multiple steps **only** when the request genuinely requires sequential reasoning — i.e. the output of one step informs the next, or multiple distinct tasks must happen in sequence.
+            |Use multiple steps **only** when the request genuinely requires it — i.e. the output of one step informs the next, or multiple distinct tasks are needed.
             |
             |Examples of multi-step requests:
-            |- "What's the time difference between Tokyo and New York?" → step 1: get Tokyo time, step 2: get New York time (requires two separate calls whose results are combined)
-            |- "Look up the weather then suggest an outfit" → step 1: fetch weather, step 2: reason about outfit based on the result
+            |- "What's the time in Tokyo and New York?" → step 1: get Tokyo time (dependsOn: []), step 2: get New York time (dependsOn: []) — independent, can run in parallel
+            |- "Look up the weather then suggest an outfit" → step 1: fetch weather (dependsOn: []), step 2: suggest outfit based on weather (dependsOn: [1]) — step 2 needs step 1's result
+            |
+            |## Step dependencies
+            |
+            |When creating multiple steps, declare dependencies using the `dependsOn` field:
+            |- `"dependsOn": []` — step can run immediately, in parallel with other independent steps
+            |- `"dependsOn": [1]` — step waits for step 1 to complete before starting
+            |- Steps that need the output of earlier steps MUST list those steps in `dependsOn`
+            |- Independent steps should have empty `dependsOn` so they can execute concurrently
             |
             |## When to use a single step
             |
@@ -68,7 +76,8 @@ class TaskPlanningService(
             |      "stepNumber": 1,
             |      "description": "What to do in this step",
             |      "expectedTools": ["toolName1"],
-            |      "skillName": "skill-name"
+            |      "skillName": "skill-name",
+            |      "dependsOn": []
             |    }
             |  ]
             |}

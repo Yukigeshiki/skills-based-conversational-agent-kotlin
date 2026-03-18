@@ -10,6 +10,7 @@ export interface PlanStep {
   description: string
   expectedTools: string[]
   skillName: string | null
+  dependsOn: number[]
 }
 
 export interface TaskPlan {

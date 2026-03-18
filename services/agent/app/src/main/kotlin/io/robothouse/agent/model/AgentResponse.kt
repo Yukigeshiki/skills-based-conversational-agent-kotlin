@@ -35,13 +35,16 @@ data class TaskPlan(
 
 /**
  * A single step within a task plan, describing what to do
- * and which tools are expected to be used.
+ * and which tools are expected to be used. Steps may declare
+ * dependencies on other steps via [dependsOn] to enable
+ * parallel execution of independent steps.
  */
 data class PlanStep(
     val stepNumber: Int,
     val description: String,
     val expectedTools: List<String> = emptyList(),
-    val skillName: String? = null
+    val skillName: String? = null,
+    val dependsOn: List<Int> = emptyList()
 )
 
 /**

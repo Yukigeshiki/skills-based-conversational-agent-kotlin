@@ -199,10 +199,13 @@ class DynamicAgentServiceTest {
         )
         whenever(taskPlanningService.createPlan(any(), any())).thenReturn(multiStepPlan)
 
-        val model = fakeChatModel(
-            ChatResponse.builder().aiMessage(AiMessage.from("NYC: 10am")).build(),
-            ChatResponse.builder().aiMessage(AiMessage.from("Tokyo: 11pm")).build()
-        )
+        val model = object : ChatModel {
+            override fun doChat(request: ChatRequest): ChatResponse {
+                val userMsg = request.messages().filterIsInstance<UserMessage>().last().singleText()
+                val response = if (userMsg.contains("Get time in NYC")) "NYC: 10am" else "Tokyo: 11pm"
+                return ChatResponse.builder().aiMessage(AiMessage.from(response)).build()
+            }
+        }
         val service = DynamicAgentService(model, toolService, agentProperties, taskPlanningService, referenceRetrievalService, skillService)
 
         val result = service.chat(skill, "What time is it in NYC and Tokyo?")
@@ -272,20 +275,17 @@ class DynamicAgentServiceTest {
 
         val multiStepPlan = TaskPlan(
             steps = listOf(
-                PlanStep(stepNumber = 1, description = "This will throw"),
-                PlanStep(stepNumber = 2, description = "This should be skipped"),
-                PlanStep(stepNumber = 3, description = "This should also be skipped")
+                PlanStep(stepNumber = 1, description = "This will throw", dependsOn = emptyList()),
+                PlanStep(stepNumber = 2, description = "This should be skipped", dependsOn = listOf(1)),
+                PlanStep(stepNumber = 3, description = "This should also be skipped", dependsOn = listOf(1))
             ),
             reasoning = "Three steps"
         )
         whenever(taskPlanningService.createPlan(any(), any())).thenReturn(multiStepPlan)
 
-        var callCount = 0
         val model = object : ChatModel {
             override fun doChat(request: ChatRequest): ChatResponse {
-                callCount++
-                if (callCount == 1) throw RuntimeException("LLM service unavailable")
-                return ChatResponse.builder().aiMessage(AiMessage.from("Synthesis with partial results")).build()
+                throw RuntimeException("LLM service unavailable")
             }
         }
         val service = DynamicAgentService(model, toolService, agentProperties, taskPlanningService, referenceRetrievalService, skillService)
@@ -477,13 +477,16 @@ class DynamicAgentServiceTest {
         )
         whenever(taskPlanningService.createPlan(any(), any())).thenReturn(multiStepPlan)
 
-        val model = fakeChatModel(
-            ChatResponse.builder().aiMessage(AiMessage.from("One")).build(),
-            ChatResponse.builder().aiMessage(AiMessage.from("Two")).build()
-        )
+        val model = object : ChatModel {
+            override fun doChat(request: ChatRequest): ChatResponse {
+                val userMsg = request.messages().filterIsInstance<UserMessage>().last().singleText()
+                val response = if (userMsg.contains("Step one")) "One" else "Two"
+                return ChatResponse.builder().aiMessage(AiMessage.from(response)).build()
+            }
+        }
         val service = DynamicAgentService(model, toolService, agentProperties, taskPlanningService, referenceRetrievalService, skillService)
 
-        val events = mutableListOf<AgentEvent>()
+        val events = java.util.Collections.synchronizedList(mutableListOf<AgentEvent>())
         service.chat(skill, "Do two things", AgentEventListener { events.add(it) })
 
         assertTrue(events.any { it is AgentEvent.PlanCreatedEvent })
@@ -746,5 +749,166 @@ class DynamicAgentServiceTest {
         // Both steps should use the routed skill's system prompt
         assertTrue(capturedSystemMessages[0].contains("test assistant"))
         assertTrue(capturedSystemMessages[1].contains("test assistant"))
+    }
+
+    // --- Parallel execution tests ---
+
+    @Test
+    fun `parallel steps with dependsOn execute and return results in step order`() {
+        whenever(toolService.getSpecificationsByNames(any())).thenReturn(emptyList())
+        whenever(toolService.getExecutorsByNames(any())).thenReturn(emptyMap())
+
+        val parallelPlan = TaskPlan(
+            steps = listOf(
+                PlanStep(stepNumber = 1, description = "Get Tokyo time", dependsOn = emptyList()),
+                PlanStep(stepNumber = 2, description = "Get NYC time", dependsOn = emptyList())
+            ),
+            reasoning = "Two independent lookups"
+        )
+        whenever(taskPlanningService.createPlan(any(), any())).thenReturn(parallelPlan)
+
+        val model = fakeChatModel(
+            ChatResponse.builder().aiMessage(AiMessage.from("Tokyo: 3pm")).build(),
+            ChatResponse.builder().aiMessage(AiMessage.from("NYC: 1am")).build()
+        )
+        val service = DynamicAgentService(model, toolService, agentProperties, taskPlanningService, referenceRetrievalService, skillService)
+
+        val result = service.chat(skill, "What time is it in Tokyo and NYC?")
+
+        assertNotNull(result.planStepResults)
+        assertEquals(2, result.planStepResults!!.size)
+        assertEquals(PlanStepStatus.COMPLETED, result.planStepResults!![0].status)
+        assertEquals(PlanStepStatus.COMPLETED, result.planStepResults!![1].status)
+        assertEquals(1, result.planStepResults!![0].step.stepNumber)
+        assertEquals(2, result.planStepResults!![1].step.stepNumber)
+    }
+
+    @Test
+    fun `parallel batch followed by dependent step executes in order`() {
+        whenever(toolService.getSpecificationsByNames(any())).thenReturn(emptyList())
+        whenever(toolService.getExecutorsByNames(any())).thenReturn(emptyMap())
+
+        val plan = TaskPlan(
+            steps = listOf(
+                PlanStep(stepNumber = 1, description = "Get Tokyo time", dependsOn = emptyList()),
+                PlanStep(stepNumber = 2, description = "Get NYC time", dependsOn = emptyList()),
+                PlanStep(stepNumber = 3, description = "Compare times", dependsOn = listOf(1, 2))
+            ),
+            reasoning = "Two parallel, one dependent"
+        )
+        whenever(taskPlanningService.createPlan(any(), any())).thenReturn(plan)
+
+        val capturedUserMessages = mutableListOf<String>()
+        var callCount = 0
+        val model = object : ChatModel {
+            override fun doChat(request: ChatRequest): ChatResponse {
+                callCount++
+                val userMsg = request.messages().filterIsInstance<dev.langchain4j.data.message.UserMessage>().last().singleText()
+                capturedUserMessages.add(userMsg)
+                return ChatResponse.builder().aiMessage(AiMessage.from("Response $callCount")).build()
+            }
+        }
+        val service = DynamicAgentService(model, toolService, agentProperties, taskPlanningService, referenceRetrievalService, skillService)
+
+        val result = service.chat(skill, "Compare times in Tokyo and NYC")
+
+        assertEquals(3, result.planStepResults!!.size)
+        assertTrue(result.planStepResults!!.all { it.status == PlanStepStatus.COMPLETED })
+
+        // Step 3 should receive prior results from steps 1 and 2
+        val step3Context = capturedUserMessages.last()
+        assertTrue(step3Context.contains("Prior step results"))
+        assertTrue(step3Context.contains("Compare times"))
+    }
+
+    @Test
+    fun `failure in parallel batch skips subsequent batches`() {
+        whenever(toolService.getSpecificationsByNames(any())).thenReturn(emptyList())
+        whenever(toolService.getExecutorsByNames(any())).thenReturn(emptyMap())
+
+        val plan = TaskPlan(
+            steps = listOf(
+                PlanStep(stepNumber = 1, description = "This will fail", dependsOn = emptyList()),
+                PlanStep(stepNumber = 2, description = "This runs in parallel", dependsOn = emptyList()),
+                PlanStep(stepNumber = 3, description = "This depends on both", dependsOn = listOf(1, 2))
+            ),
+            reasoning = "Failure test"
+        )
+        whenever(taskPlanningService.createPlan(any(), any())).thenReturn(plan)
+
+        val model = object : ChatModel {
+            override fun doChat(request: ChatRequest): ChatResponse {
+                val userMsg = request.messages().filterIsInstance<dev.langchain4j.data.message.UserMessage>().last().singleText()
+                // Fail deterministically based on step description, not call order
+                if (userMsg.contains("This will fail")) throw RuntimeException("LLM unavailable")
+                return ChatResponse.builder().aiMessage(AiMessage.from("OK")).build()
+            }
+        }
+        val service = DynamicAgentService(model, toolService, agentProperties, taskPlanningService, referenceRetrievalService, skillService)
+
+        val result = service.chat(skill, "Do things")
+
+        assertNotNull(result.planStepResults)
+        assertEquals(3, result.planStepResults!!.size)
+
+        // Step 1 failed deterministically, step 2 completed (ran in parallel), step 3 skipped
+        assertEquals(PlanStepStatus.FAILED, result.planStepResults!![0].status)
+        assertEquals(PlanStepStatus.COMPLETED, result.planStepResults!![1].status)
+        assertEquals(PlanStepStatus.SKIPPED, result.planStepResults!![2].status)
+    }
+
+    @Test
+    fun `circular dependencies fall back to sequential execution`() {
+        whenever(toolService.getSpecificationsByNames(any())).thenReturn(emptyList())
+        whenever(toolService.getExecutorsByNames(any())).thenReturn(emptyMap())
+
+        val plan = TaskPlan(
+            steps = listOf(
+                PlanStep(stepNumber = 1, description = "Depends on 2", dependsOn = listOf(2)),
+                PlanStep(stepNumber = 2, description = "Depends on 1", dependsOn = listOf(1))
+            ),
+            reasoning = "Circular"
+        )
+        whenever(taskPlanningService.createPlan(any(), any())).thenReturn(plan)
+
+        val model = fakeChatModel(
+            ChatResponse.builder().aiMessage(AiMessage.from("One")).build(),
+            ChatResponse.builder().aiMessage(AiMessage.from("Two")).build()
+        )
+        val service = DynamicAgentService(model, toolService, agentProperties, taskPlanningService, referenceRetrievalService, skillService)
+
+        val result = service.chat(skill, "Circular deps")
+
+        // Should not deadlock — falls back to sequential
+        assertNotNull(result.planStepResults)
+        assertEquals(2, result.planStepResults!!.size)
+    }
+
+    @Test
+    fun `steps without dependsOn run in parallel as independent`() {
+        whenever(toolService.getSpecificationsByNames(any())).thenReturn(emptyList())
+        whenever(toolService.getExecutorsByNames(any())).thenReturn(emptyMap())
+
+        val plan = TaskPlan(
+            steps = listOf(
+                PlanStep(stepNumber = 1, description = "Step one"),
+                PlanStep(stepNumber = 2, description = "Step two")
+            ),
+            reasoning = "No deps — both independent"
+        )
+        whenever(taskPlanningService.createPlan(any(), any())).thenReturn(plan)
+
+        val model = fakeChatModel(
+            ChatResponse.builder().aiMessage(AiMessage.from("One")).build(),
+            ChatResponse.builder().aiMessage(AiMessage.from("Two")).build()
+        )
+        val service = DynamicAgentService(model, toolService, agentProperties, taskPlanningService, referenceRetrievalService, skillService)
+
+        val result = service.chat(skill, "Do two things")
+
+        assertEquals(2, result.planStepResults!!.size)
+        assertTrue(result.planStepResults!!.all { it.status == PlanStepStatus.COMPLETED })
+        assertEquals(1, result.planStepResults!![0].step.stepNumber)
+        assertEquals(2, result.planStepResults!![1].step.stepNumber)
     }
 }

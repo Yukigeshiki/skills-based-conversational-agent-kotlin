@@ -21,6 +21,7 @@ import io.robothouse.agent.listener.AgentEventListener
 import io.robothouse.agent.model.AgentEvent
 import io.robothouse.agent.model.AgentResponse
 import io.robothouse.agent.model.ConversationMessage
+import io.robothouse.agent.model.PlanStep
 import io.robothouse.agent.model.PlanStepResult
 import io.robothouse.agent.model.PlanStepStatus
 import io.robothouse.agent.model.RetrievedChunk
@@ -91,108 +92,9 @@ class DynamicAgentService(
             return response.copy(plan = plan)
         }
 
-        // 3. Multi-step path: execute each step sequentially, stopping on failure
-        val stepResults = mutableListOf<PlanStepResult>()
-        val allToolSteps = mutableListOf<ToolExecutionStep>()
-        var failed = false
-
-        for (planStep in plan.steps) {
-            // Skip remaining steps after a failure
-            if (failed) {
-                log.debug { "Skipping plan step ${planStep.stepNumber} due to earlier failure" }
-                stepResults.add(
-                    PlanStepResult(
-                        step = planStep,
-                        status = PlanStepStatus.SKIPPED,
-                        response = "Skipped due to failure of a prior step"
-                    )
-                )
-                emitEvent(listener) {
-                    AgentEvent.PlanStepCompletedEvent(
-                        stepNumber = planStep.stepNumber,
-                        status = PlanStepStatus.SKIPPED,
-                        response = "Skipped due to failure of a prior step"
-                    )
-                }
-                continue
-            }
-
-            // Resolve the skill for this step (may differ from the routed skill)
-            val stepSkill = planStep.skillName?.let { name ->
-                skillService.findByName(name) ?: run {
-                    log.warn { "Unknown skill '$name' in plan step ${planStep.stepNumber}, using routed skill" }
-                    skill
-                }
-            } ?: skill
-
-            // Prepare the step's context: RAG chunks, system prompt, and tool specs
-            val stepChunks = stepSkill.id?.let {
-                referenceRetrievalService.retrieveChunks(it, planStep.description)
-            } ?: emptyList()
-            val stepSystemPrompt = buildSystemPrompt(stepSkill, stepChunks)
-            val stepSpecs = toolService.getSpecificationsByNames(stepSkill.toolNames)
-            val stepExecutors = toolService.getExecutorsByNames(stepSkill.toolNames)
-
-            log.debug { "Executing plan step ${planStep.stepNumber}: ${planStep.description}" }
-            emitEvent(listener) {
-                AgentEvent.PlanStepStartedEvent(
-                    stepNumber = planStep.stepNumber,
-                    description = planStep.description,
-                    skillName = stepSkill.name
-                )
-            }
-
-            // Build the user message with prior step results for context
-            val priorContext = if (stepResults.isNotEmpty()) {
-                val priorSummary = stepResults.joinToString("\n") { result ->
-                    "Step ${result.step.stepNumber} (${result.status}): ${result.response}"
-                }
-                "Prior step results:\n$priorSummary\n\nNow execute this step: ${planStep.description}"
-            } else {
-                "Original request: $userMessage\n\nExecute this step: ${planStep.description}"
-            }
-
-            // Execute the step via the agent loop graph
-            try {
-                val stepResponse = executeStep(
-                    stepSystemPrompt, priorContext, stepSpecs, stepExecutors, stepSkill.name, listener, emitFinalResponse = false,
-                    conversationId = conversationId
-                )
-                allToolSteps.addAll(stepResponse.steps)
-                val stepResult = PlanStepResult(
-                    step = planStep,
-                    status = PlanStepStatus.COMPLETED,
-                    response = stepResponse.response,
-                    toolSteps = stepResponse.steps,
-                    iterations = stepResponse.iterations
-                )
-                stepResults.add(stepResult)
-                emitEvent(listener) {
-                    AgentEvent.PlanStepCompletedEvent(
-                        stepNumber = planStep.stepNumber,
-                        status = PlanStepStatus.COMPLETED,
-                        response = stepResponse.response
-                    )
-                }
-            } catch (e: Exception) {
-                log.warn { "Plan step ${planStep.stepNumber} failed for skill: name=${stepSkill.name}, error: ${e.message}" }
-                stepResults.add(
-                    PlanStepResult(
-                        step = planStep,
-                        status = PlanStepStatus.FAILED,
-                        response = e.message ?: "Step failed"
-                    )
-                )
-                emitEvent(listener) {
-                    AgentEvent.PlanStepCompletedEvent(
-                        stepNumber = planStep.stepNumber,
-                        status = PlanStepStatus.FAILED,
-                        response = e.message ?: "Step failed"
-                    )
-                }
-                failed = true
-            }
-        }
+        // 3. Multi-step path: execute steps in dependency-based batches (independent steps run in parallel)
+        val stepResults = executeStepsByBatch(plan.steps, skill, userMessage, listener, conversationId)
+        val allToolSteps = stepResults.flatMap { it.toolSteps }
 
         // 4. Assemble step results into the final response
         val assembledResponse = assembleResults(stepResults)
@@ -209,6 +111,275 @@ class DynamicAgentService(
         )
         emitEvent(listener) { AgentEvent.FinalResponseEvent(response = agentResponse.response, skill = agentResponse.skill) }
         return agentResponse
+    }
+
+    /**
+     * Executes plan steps in dependency-based batches. Steps within a batch
+     * whose dependencies are all satisfied run concurrently on virtual threads.
+     * Batches execute sequentially — the next batch starts only when all steps
+     * in the current batch have completed.
+     */
+    private fun executeStepsByBatch(
+        steps: List<PlanStep>,
+        skill: Skill,
+        userMessage: String,
+        listener: AgentEventListener,
+        conversationId: String?
+    ): List<PlanStepResult> {
+        val batches = computeBatches(steps)
+        log.debug { "Computed ${batches.size} batch(es): ${batches.map { batch -> batch.map { it.stepNumber } }}" }
+
+        val stepResults = mutableListOf<PlanStepResult>()
+        val completedResults = mutableMapOf<Int, PlanStepResult>()
+        var failed = false
+
+        for (batch in batches) {
+            if (failed) {
+                batch.forEach { planStep -> skipStep(planStep, stepResults, listener) }
+                continue
+            }
+
+            if (batch.size == 1) {
+                // Single step — execute inline without thread overhead
+                val planStep = batch.first()
+                val stepSkill = resolveStepSkill(planStep, skill)
+                prepareAndEmitStepStart(planStep, stepSkill, listener)
+                val context = buildDependencyContext(planStep, completedResults, userMessage)
+
+                if (!executeAndRecordStep(planStep, stepSkill, context, listener, conversationId, stepResults)) {
+                    failed = true
+                }
+                stepResults.last().let { completedResults[planStep.stepNumber] = it }
+            } else {
+                // Multiple steps — execute concurrently with virtual threads
+                val batchResults = executeBatchConcurrently(batch, skill, userMessage, completedResults, listener, conversationId)
+                for (result in batchResults) {
+                    stepResults.add(result)
+                    completedResults[result.step.stepNumber] = result
+                    if (result.status == PlanStepStatus.FAILED) {
+                        failed = true
+                    }
+                }
+            }
+        }
+
+        return stepResults
+    }
+
+    /**
+     * Executes a batch of independent steps concurrently using virtual threads.
+     * Returns results sorted by step number for deterministic output.
+     */
+    private fun executeBatchConcurrently(
+        batch: List<PlanStep>,
+        skill: Skill,
+        userMessage: String,
+        completedResults: Map<Int, PlanStepResult>,
+        listener: AgentEventListener,
+        conversationId: String?
+    ): List<PlanStepResult> {
+        val executor = java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor()
+
+        val futures = batch.map { planStep ->
+            val stepSkill = resolveStepSkill(planStep, skill)
+            val stepChunks = stepSkill.id?.let {
+                referenceRetrievalService.retrieveChunks(it, planStep.description)
+            } ?: emptyList()
+            val stepSystemPrompt = buildSystemPrompt(stepSkill, stepChunks)
+            val stepSpecs = toolService.getSpecificationsByNames(stepSkill.toolNames)
+            val stepExecutors = toolService.getExecutorsByNames(stepSkill.toolNames)
+            val context = buildDependencyContext(planStep, completedResults, userMessage)
+
+            planStep to executor.submit(java.util.concurrent.Callable {
+                emitEvent(listener) {
+                    AgentEvent.PlanStepStartedEvent(
+                        stepNumber = planStep.stepNumber,
+                        description = planStep.description,
+                        skillName = stepSkill.name
+                    )
+                }
+                executeStep(
+                    stepSystemPrompt, context, stepSpecs, stepExecutors, stepSkill.name, listener,
+                    emitFinalResponse = false, conversationId = conversationId
+                )
+            })
+        }
+
+        val results = futures.sortedBy { it.first.stepNumber }.map { (planStep, future) ->
+            try {
+                val response = future.get()
+                emitEvent(listener) {
+                    AgentEvent.PlanStepCompletedEvent(
+                        stepNumber = planStep.stepNumber,
+                        status = PlanStepStatus.COMPLETED,
+                        response = response.response
+                    )
+                }
+                PlanStepResult(
+                    step = planStep,
+                    status = PlanStepStatus.COMPLETED,
+                    response = response.response,
+                    toolSteps = response.steps,
+                    iterations = response.iterations
+                )
+            } catch (e: Exception) {
+                val message = e.cause?.message ?: e.message ?: "Step failed"
+                log.warn { "Plan step ${planStep.stepNumber} failed: $message" }
+                emitEvent(listener) {
+                    AgentEvent.PlanStepCompletedEvent(
+                        stepNumber = planStep.stepNumber,
+                        status = PlanStepStatus.FAILED,
+                        response = message
+                    )
+                }
+                PlanStepResult(step = planStep, status = PlanStepStatus.FAILED, response = message)
+            }
+        }
+
+        executor.shutdown()
+        return results
+    }
+
+    /**
+     * Groups plan steps into execution batches based on their declared
+     * dependencies. Steps whose dependencies are all satisfied by prior
+     * batches are grouped together. Falls back to sequential execution
+     * if circular dependencies are detected.
+     */
+    private fun computeBatches(steps: List<PlanStep>): List<List<PlanStep>> {
+        val batches = mutableListOf<List<PlanStep>>()
+        val completed = mutableSetOf<Int>()
+        val remaining = steps.toMutableList()
+
+        while (remaining.isNotEmpty()) {
+            val ready = remaining.filter { step ->
+                step.dependsOn.all { dep -> dep in completed }
+            }
+            if (ready.isEmpty()) {
+                log.warn { "Circular or invalid dependencies detected — executing remaining steps sequentially" }
+                batches.add(remaining.toList())
+                break
+            }
+            batches.add(ready)
+            completed.addAll(ready.map { it.stepNumber })
+            remaining.removeAll(ready.toSet())
+        }
+
+        return batches
+    }
+
+    /**
+     * Builds the user message context for a step using only its declared
+     * dependencies' results, rather than all prior results. This allows
+     * parallel steps to receive only the context they need.
+     */
+    private fun buildDependencyContext(
+        planStep: PlanStep,
+        completedResults: Map<Int, PlanStepResult>,
+        userMessage: String
+    ): String {
+        val depResults = planStep.dependsOn.mapNotNull { completedResults[it] }
+        return if (depResults.isNotEmpty()) {
+            val depSummary = depResults.joinToString("\n") { result ->
+                "Step ${result.step.stepNumber} (${result.status}): ${result.response}"
+            }
+            "Prior step results:\n$depSummary\n\nNow execute this step: ${planStep.description}"
+        } else {
+            "Original request: $userMessage\n\nExecute this step: ${planStep.description}"
+        }
+    }
+
+    /**
+     * Resolves the skill for a plan step, falling back to the routed skill
+     * if the step's skill name is not found.
+     */
+    private fun resolveStepSkill(planStep: PlanStep, defaultSkill: Skill): Skill {
+        return planStep.skillName?.let { name ->
+            skillService.findByName(name) ?: run {
+                log.warn { "Unknown skill '$name' in plan step ${planStep.stepNumber}, using routed skill" }
+                defaultSkill
+            }
+        } ?: defaultSkill
+    }
+
+    /**
+     * Prepares a step's context (RAG, system prompt, tools) and emits
+     * the [AgentEvent.PlanStepStartedEvent].
+     */
+    private fun prepareAndEmitStepStart(
+        planStep: PlanStep,
+        stepSkill: Skill,
+        listener: AgentEventListener
+    ) {
+        log.debug { "Executing plan step ${planStep.stepNumber}: ${planStep.description}" }
+        emitEvent(listener) {
+            AgentEvent.PlanStepStartedEvent(
+                stepNumber = planStep.stepNumber,
+                description = planStep.description,
+                skillName = stepSkill.name
+            )
+        }
+    }
+
+    /**
+     * Executes a single plan step and records the result. Returns true if
+     * the step completed successfully, false if it failed.
+     */
+    private fun executeAndRecordStep(
+        planStep: PlanStep,
+        stepSkill: Skill,
+        context: String,
+        listener: AgentEventListener,
+        conversationId: String?,
+        stepResults: MutableList<PlanStepResult>
+    ): Boolean {
+        val stepChunks = stepSkill.id?.let {
+            referenceRetrievalService.retrieveChunks(it, planStep.description)
+        } ?: emptyList()
+        val stepSystemPrompt = buildSystemPrompt(stepSkill, stepChunks)
+        val stepSpecs = toolService.getSpecificationsByNames(stepSkill.toolNames)
+        val stepExecutors = toolService.getExecutorsByNames(stepSkill.toolNames)
+
+        return try {
+            val stepResponse = executeStep(
+                stepSystemPrompt, context, stepSpecs, stepExecutors, stepSkill.name, listener,
+                emitFinalResponse = false, conversationId = conversationId
+            )
+            stepResults.add(
+                PlanStepResult(
+                    step = planStep, status = PlanStepStatus.COMPLETED, response = stepResponse.response,
+                    toolSteps = stepResponse.steps, iterations = stepResponse.iterations
+                )
+            )
+            emitEvent(listener) {
+                AgentEvent.PlanStepCompletedEvent(stepNumber = planStep.stepNumber, status = PlanStepStatus.COMPLETED, response = stepResponse.response)
+            }
+            true
+        } catch (e: Exception) {
+            log.warn { "Plan step ${planStep.stepNumber} failed for skill: name=${stepSkill.name}, error: ${e.message}" }
+            stepResults.add(
+                PlanStepResult(step = planStep, status = PlanStepStatus.FAILED, response = e.message ?: "Step failed")
+            )
+            emitEvent(listener) {
+                AgentEvent.PlanStepCompletedEvent(stepNumber = planStep.stepNumber, status = PlanStepStatus.FAILED, response = e.message ?: "Step failed")
+            }
+            false
+        }
+    }
+
+    /**
+     * Marks a plan step as skipped and records the result.
+     */
+    private fun skipStep(
+        planStep: PlanStep,
+        stepResults: MutableList<PlanStepResult>,
+        listener: AgentEventListener
+    ) {
+        log.debug { "Skipping plan step ${planStep.stepNumber} due to earlier failure" }
+        stepResults.add(PlanStepResult(step = planStep, status = PlanStepStatus.SKIPPED, response = "Skipped due to failure of a prior step"))
+        emitEvent(listener) {
+            AgentEvent.PlanStepCompletedEvent(stepNumber = planStep.stepNumber, status = PlanStepStatus.SKIPPED, response = "Skipped due to failure of a prior step")
+        }
     }
 
     /**
@@ -447,10 +618,14 @@ class DynamicAgentService(
     /**
      * Safely delivers an event to the listener, catching and logging any
      * exception so that a faulty listener never interrupts the agent loop.
+     * Synchronized to prevent interleaved event delivery during parallel
+     * step execution.
      */
     private fun emitEvent(listener: AgentEventListener, eventSupplier: () -> AgentEvent) {
         try {
-            listener.onEvent(eventSupplier())
+            synchronized(listener) {
+                listener.onEvent(eventSupplier())
+            }
         } catch (e: Exception) {
             log.warn { "AgentEventListener threw: ${e.message}" }
         }

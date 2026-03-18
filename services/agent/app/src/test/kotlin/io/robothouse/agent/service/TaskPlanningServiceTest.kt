@@ -206,4 +206,44 @@ class TaskPlanningServiceTest {
         assertEquals(1, plan.steps.size)
         assertNull(plan.steps[0].skillName)
     }
+
+    @Test
+    fun `parsed plan preserves dependsOn field from JSON`() {
+        val json = """
+            {
+              "reasoning": "Independent steps",
+              "steps": [
+                {"stepNumber": 1, "description": "Get Tokyo time", "expectedTools": [], "dependsOn": []},
+                {"stepNumber": 2, "description": "Get NYC time", "expectedTools": [], "dependsOn": []},
+                {"stepNumber": 3, "description": "Compare times", "expectedTools": [], "dependsOn": [1, 2]}
+              ]
+            }
+        """.trimIndent()
+
+        val service = TaskPlanningService(fakeChatModel(json), agentProperties, skillCacheService)
+        val plan = service.createPlan("Time difference between Tokyo and NYC")
+
+        assertEquals(3, plan.steps.size)
+        assertEquals(emptyList<Int>(), plan.steps[0].dependsOn)
+        assertEquals(emptyList<Int>(), plan.steps[1].dependsOn)
+        assertEquals(listOf(1, 2), plan.steps[2].dependsOn)
+    }
+
+    @Test
+    fun `parsed plan has empty dependsOn when not provided in JSON`() {
+        val json = """
+            {
+              "reasoning": "No deps",
+              "steps": [
+                {"stepNumber": 1, "description": "Do it", "expectedTools": []}
+              ]
+            }
+        """.trimIndent()
+
+        val service = TaskPlanningService(fakeChatModel(json), agentProperties, skillCacheService)
+        val plan = service.createPlan("Simple")
+
+        assertEquals(1, plan.steps.size)
+        assertEquals(emptyList<Int>(), plan.steps[0].dependsOn)
+    }
 }
