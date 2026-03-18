@@ -24,7 +24,8 @@ class TaskPlanningServiceTest {
         maxIterations = 10,
         toolExecutionTimeoutSeconds = 30,
         maxPlanSteps = 5,
-        checkpointingEnabled = false
+        checkpointingEnabled = false,
+        maxDelegationDepth = 2
     )
 
     private val skillCacheService: SkillCacheService = mock()

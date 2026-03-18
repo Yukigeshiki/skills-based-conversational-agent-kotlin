@@ -99,6 +99,24 @@ export interface SkillReroutedEvent {
   timestamp: string
 }
 
+export interface SkillHandoffStartedEvent {
+  type: 'skill_handoff_started'
+  fromSkill: string
+  toSkill: string
+  request: string
+  delegationDepth: number
+  timestamp: string
+}
+
+export interface SkillHandoffCompletedEvent {
+  type: 'skill_handoff_completed'
+  fromSkill: string
+  toSkill: string
+  delegationDepth: number
+  success: boolean
+  timestamp: string
+}
+
 export interface WarningEvent {
   type: 'warning'
   message: string
@@ -123,5 +141,7 @@ export type ChatEvent =
   | ToolCallCompletedEvent
   | FinalResponseEvent
   | SkillReroutedEvent
+  | SkillHandoffStartedEvent
+  | SkillHandoffCompletedEvent
   | WarningEvent
   | ErrorEvent

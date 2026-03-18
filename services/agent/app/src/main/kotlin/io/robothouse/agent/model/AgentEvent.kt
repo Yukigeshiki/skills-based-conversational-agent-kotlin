@@ -25,6 +25,8 @@ import java.time.Instant
     JsonSubTypes.Type(value = AgentEvent.ToolCallCompletedEvent::class, name = "tool_call_completed"),
     JsonSubTypes.Type(value = AgentEvent.FinalResponseEvent::class, name = "final_response"),
     JsonSubTypes.Type(value = AgentEvent.SkillReroutedEvent::class, name = "skill_rerouted"),
+    JsonSubTypes.Type(value = AgentEvent.SkillHandoffStartedEvent::class, name = "skill_handoff_started"),
+    JsonSubTypes.Type(value = AgentEvent.SkillHandoffCompletedEvent::class, name = "skill_handoff_completed"),
     JsonSubTypes.Type(value = AgentEvent.WarningEvent::class, name = "warning"),
     JsonSubTypes.Type(value = AgentEvent.ErrorEvent::class, name = "error"),
     JsonSubTypes.Type(value = AgentEvent.HeartbeatEvent::class, name = "heartbeat")
@@ -166,6 +168,34 @@ sealed class AgentEvent {
         override val timestamp: Instant = Instant.now()
     ) : AgentEvent() {
         override val type: String = "skill_rerouted"
+    }
+
+    /**
+     * Emitted when a skill delegates a request to another skill via the
+     * delegateToSkill meta-tool, before the target skill begins execution.
+     */
+    data class SkillHandoffStartedEvent(
+        val fromSkill: String,
+        val toSkill: String,
+        val request: String,
+        val delegationDepth: Int,
+        override val timestamp: Instant = Instant.now()
+    ) : AgentEvent() {
+        override val type: String = "skill_handoff_started"
+    }
+
+    /**
+     * Emitted after a delegated skill completes execution, carrying whether
+     * the delegation succeeded or failed.
+     */
+    data class SkillHandoffCompletedEvent(
+        val fromSkill: String,
+        val toSkill: String,
+        val delegationDepth: Int,
+        val success: Boolean,
+        override val timestamp: Instant = Instant.now()
+    ) : AgentEvent() {
+        override val type: String = "skill_handoff_completed"
     }
 
     /**

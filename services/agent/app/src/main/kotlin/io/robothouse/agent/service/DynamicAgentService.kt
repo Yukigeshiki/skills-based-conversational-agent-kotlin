@@ -16,6 +16,7 @@ import io.robothouse.agent.graph.agent.AgentGraphState
 import io.robothouse.agent.graph.checkpoint.AgentGraphStateSerializer
 import io.robothouse.agent.graph.checkpoint.PostgresCheckpointSaver
 import io.robothouse.agent.graph.unwrapGraphException
+import io.robothouse.agent.tool.DelegateToSkillExecutorFactory
 import org.bsc.langgraph4j.RunnableConfig
 import io.robothouse.agent.listener.AgentEventListener
 import io.robothouse.agent.model.AgentEvent
@@ -48,6 +49,7 @@ class DynamicAgentService(
     private val taskPlanningService: TaskPlanningService,
     private val referenceRetrievalService: ReferenceRetrievalService,
     private val skillService: SkillService,
+    private val delegateToSkillExecutorFactory: DelegateToSkillExecutorFactory,
     @param:Autowired(required = false) private val agentGraphStateSerializer: AgentGraphStateSerializer? = null,
     @param:Autowired(required = false) @param:Qualifier("agentCheckpointSaver") private val checkpointSaver: PostgresCheckpointSaver? = null
 ) {
@@ -426,7 +428,8 @@ class DynamicAgentService(
         listener: AgentEventListener = AgentEventListener.NOOP,
         emitFinalResponse: Boolean = true,
         conversationHistory: List<ConversationMessage> = emptyList(),
-        conversationId: String? = null
+        conversationId: String? = null,
+        delegationDepth: Int = 0
     ): AgentResponse {
         val messages = mutableListOf<ChatMessage>(SystemMessage.from(systemPrompt))
         conversationHistory.forEach { msg ->
@@ -437,14 +440,26 @@ class DynamicAgentService(
         }
         appendUserMessage(messages, userMessage)
 
+        // Inject the delegateToSkill meta-tool alongside the skill's own tools
+        val delegateExecutor = delegateToSkillExecutorFactory.createExecutor(
+            currentDepth = delegationDepth,
+            maxDepth = agentProperties.maxDelegationDepth,
+            currentSkillName = skillName,
+            listener = listener,
+            conversationId = conversationId,
+            delegateFn = ::executeStepForDelegation
+        )
+        val allSpecifications = specifications + delegateToSkillExecutorFactory.specification()
+        val allExecutors = executors + (DelegateToSkillExecutorFactory.TOOL_NAME to delegateExecutor)
+
         val taskMemory = TaskMemory()
 
         val ctx = AgentGraphContext(
             agentChatModel = agentChatModel,
             systemPrompt = systemPrompt,
             skillName = skillName,
-            specifications = specifications,
-            executors = executors,
+            specifications = allSpecifications,
+            executors = allExecutors,
             listener = listener,
             emitFinalResponse = emitFinalResponse,
             taskMemory = taskMemory,
@@ -499,6 +514,39 @@ class DynamicAgentService(
             steps = result.steps,
             toolExecutionCount = result.steps.size,
             iterations = taskMemory.iterations
+        )
+    }
+
+    /**
+     * Entry point for skill-to-skill delegation called by the
+     * [DelegateToSkillExecutorFactory]'s executor. Resolves the target
+     * skill's RAG context, system prompt, and tools, then executes a
+     * nested agent loop at the given delegation depth.
+     */
+    internal fun executeStepForDelegation(
+        skill: Skill,
+        request: String,
+        delegationDepth: Int,
+        listener: AgentEventListener,
+        conversationId: String?
+    ): AgentResponse {
+        val retrievedChunks = skill.id?.let {
+            referenceRetrievalService.retrieveChunks(it, request)
+        } ?: emptyList()
+        val systemPrompt = buildSystemPrompt(skill, retrievedChunks)
+        val specifications = toolService.getSpecificationsByNames(skill.toolNames)
+        val executors = toolService.getExecutorsByNames(skill.toolNames)
+
+        return executeStep(
+            systemPrompt = systemPrompt,
+            userMessage = request,
+            specifications = specifications,
+            executors = executors,
+            skillName = skill.name,
+            listener = listener,
+            emitFinalResponse = false,
+            conversationId = conversationId,
+            delegationDepth = delegationDepth
         )
     }
 
