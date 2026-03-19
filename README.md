@@ -10,7 +10,7 @@ A conversational agent built with Kotlin and Spring Boot. User messages are rout
 
 1. **Skill routing** — the user message is routed to the best-matching skill (see [Skill Routing](#skill-routing) below)
 2. **Planning** — the agent decomposes the request into execution steps with declared dependencies; independent steps run in parallel on virtual threads, dependent steps wait for their prerequisites; each step can target a different skill for multi-skill workflows
-3. **Agent loop** — Claude reasons, calls tools, observes results, and repeats until done (step failure short-circuits remaining steps)
+3. **Agent loop** — Claude reasons, calls tools, observes results, and repeats until done; skills can delegate to other skills at runtime via the `delegateToSkill` meta-tool; skills with `requiresApproval` pause before tool execution for human review
 4. **Validation** — specialist skill responses are validated; inadequate ones are rerouted to the general-assistant fallback
 5. **Streaming** — SSE events stream back throughout (skill matched, thoughts, tool calls, plan steps, response)
 6. **Memory** — Redis-backed conversation history (50 messages, 24h TTL) enables multi-turn context
@@ -87,7 +87,7 @@ START -> load_memory -> route_skill -> execute_skill -> conditional
 
 ### Agent Loop Graph
 
-Handles the LLM tool-execution cycle within each plan step. Cyclic graph that repeats until the LLM responds with text or the iteration limit is reached.
+Handles the LLM tool-execution cycle within each plan step. Cyclic graph that repeats until the LLM responds with text or the iteration limit is reached. When a skill has `requiresApproval` enabled and checkpointing is active, `interruptBefore("execute_tools")` pauses the graph before tool execution, allowing human review via the approval endpoint.
 
 ```
 START -> call_llm -> conditional -> execute_tools -> call_llm (cycle)
@@ -106,11 +106,19 @@ When enabled, checkpoints are stored in the `graph_checkpoints` table and keyed 
 
 ## Skills
 
-Skills define how the agent handles different types of requests. Each skill has a name, description, system prompt, an optional response template, and a list of tools. When a user sends a message, it is routed to the most relevant skill via the [routing cascade](#skill-routing) described below.
+Skills define how the agent handles different types of requests. Each skill has a name, description, system prompt, an optional response template, an optional list of tools, and a `requiresApproval` flag. When a user sends a message, it is routed to the most relevant skill via the [routing cascade](#skill-routing) described below.
 
 A `general-assistant` skill is seeded on first startup and is protected (non-deletable and immutable). To create additional skills, use the skills management page in the UI or the REST API. System prompts should be written in markdown.
 
 All skills use multistep planning — the agent decomposes the request into steps, and each step can target a different skill for multi-skill workflows. Simple requests produce single-step plans and skip per-step overhead. If a step fails, remaining steps are short-circuited.
+
+### Skill-to-Skill Delegation
+
+Every skill automatically has access to a `delegateToSkill` meta-tool that enables runtime delegation to other skills. When the LLM determines that a task requires capabilities from a different skill, it can call `delegateToSkill(skillName, request)` to hand the work off. The target skill executes with its own system prompt, tools, and RAG context, and the result flows back as a tool execution result. A configurable recursion depth limit (default 2) prevents infinite delegation chains.
+
+### Tool Approval (Human-in-the-Loop)
+
+Skills can optionally require human approval before tool execution by setting `requiresApproval` to `true`. When enabled (requires `agent.checkpointing-enabled=true`), the agent loop pauses before executing tools, emits an `approval_required` SSE event with the pending tool calls, and waits for a human decision via the `POST /api/chat/{conversationId}/approve` endpoint. Approved requests resume from the checkpoint; rejected requests return a rejection message.
 
 ### Response Templates
 
@@ -136,6 +144,8 @@ Messages are routed through a cascade of strategies:
 
 An example tool (`DateTimeTool`) is included. To add more tools, create a Spring `@Component` in the tool directory, with methods annotated with LangChain4j's `@Tool`, then reference the class name in a skill's `toolNames`.
 
+A built-in `delegateToSkill` meta-tool is automatically available to all skills (it does not need to be added to `toolNames`). It enables skill-to-skill handoff at runtime — see [Skill-to-Skill Delegation](#skill-to-skill-delegation).
+
 ## API
 
 Swagger UI: http://localhost:9090/swagger-ui.html
@@ -160,13 +170,27 @@ curl -N -X POST http://localhost:9090/api/chat \
 curl http://localhost:9090/api/chat/{conversationId}/history
 ```
 
+### Tool Approval (SSE)
+
+```bash
+# Approve pending tool execution (returns SSE stream with remaining events)
+curl -N -X POST http://localhost:9090/api/chat/{conversationId}/approve \
+  -H 'Content-Type: application/json' \
+  -d '{"approvalId": "<uuid>", "decision": "APPROVED"}'
+
+# Reject pending tool execution
+curl -N -X POST http://localhost:9090/api/chat/{conversationId}/approve \
+  -H 'Content-Type: application/json' \
+  -d '{"approvalId": "<uuid>", "decision": "REJECTED"}'
+```
+
 ### Skills CRUD
 
 ```bash
 curl http://localhost:9090/api/skills                    # List
 curl -X POST http://localhost:9090/api/skills \          # Create
   -H 'Content-Type: application/json' \
-  -d '{"name": "my-skill", "description": "...", "systemPrompt": "...", "responseTemplate": "...", "toolNames": ["DateTimeTool"]}'
+  -d '{"name": "my-skill", "description": "...", "systemPrompt": "...", "responseTemplate": "...", "toolNames": ["DateTimeTool"], "requiresApproval": false}'
 curl -X PATCH http://localhost:9090/api/skills/{id} ...  # Update
 curl -X DELETE http://localhost:9090/api/skills/{id}     # Delete
 ```
