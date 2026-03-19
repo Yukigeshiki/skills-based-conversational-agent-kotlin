@@ -117,6 +117,28 @@ export interface SkillHandoffCompletedEvent {
   timestamp: string
 }
 
+export interface PendingToolCall {
+  toolName: string
+  arguments: string
+}
+
+export type ApprovalDecision = 'APPROVED' | 'REJECTED'
+
+export interface ApprovalRequiredEvent {
+  type: 'approval_required'
+  approvalId: string
+  toolCalls: PendingToolCall[]
+  skillName: string
+  timestamp: string
+}
+
+export interface ApprovalResolvedEvent {
+  type: 'approval_resolved'
+  approvalId: string
+  decision: ApprovalDecision
+  timestamp: string
+}
+
 export interface WarningEvent {
   type: 'warning'
   message: string
@@ -143,5 +165,7 @@ export type ChatEvent =
   | SkillReroutedEvent
   | SkillHandoffStartedEvent
   | SkillHandoffCompletedEvent
+  | ApprovalRequiredEvent
+  | ApprovalResolvedEvent
   | WarningEvent
   | ErrorEvent

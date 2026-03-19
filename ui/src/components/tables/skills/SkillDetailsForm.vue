@@ -21,6 +21,13 @@
       v-model="model.toolNames"
       label="Tool Names"
     />
+    <div class="flex items-center gap-3">
+      <Switch
+        :checked="model.requiresApproval"
+        @update:checked="model.requiresApproval = $event"
+      />
+      <Label for="skill-requires-approval">Require approval before tool execution</Label>
+    </div>
     <div class="space-y-2">
       <Label for="skill-description">Description (include query examples for better matching)</Label>
       <Textarea
@@ -83,6 +90,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { PreviewToggleButton, ToolSelector } from '@/components/common'
+import { Switch } from '@/components/ui/switch'
 import type { SkillFormData } from '@/types/skill'
 
 interface Props {

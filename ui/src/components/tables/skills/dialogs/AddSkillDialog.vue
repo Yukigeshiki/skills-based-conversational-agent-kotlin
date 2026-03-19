@@ -131,9 +131,9 @@
                     <span class="text-muted-foreground">Description:</span>
                     <span class="ml-2 font-medium">{{ skillForm.description || '—' }}</span>
                   </div>
-                  <div v-if="skillForm.toolNames.length > 0">
+                  <div>
                     <span class="text-muted-foreground">Tools:</span>
-                    <span class="ml-2">
+                    <span v-if="skillForm.toolNames.length > 0" class="ml-2">
                       <span
                         v-for="tool in skillForm.toolNames"
                         :key="tool"
@@ -142,6 +142,11 @@
                         {{ tool }}
                       </span>
                     </span>
+                    <span v-else class="ml-2 text-sm text-muted-foreground italic">No tools chosen</span>
+                  </div>
+                  <div>
+                    <span class="text-muted-foreground">Requires Approval:</span>
+                    <span class="ml-2 font-medium">{{ skillForm.requiresApproval ? 'Yes' : 'No' }}</span>
                   </div>
                 </div>
               </div>
@@ -292,6 +297,7 @@ const skillForm = ref<SkillFormData>({
   systemPrompt: '',
   responseTemplate: '',
   toolNames: [],
+  requiresApproval: false,
 })
 
 const isStep1Valid = ref(false)
@@ -430,7 +436,7 @@ function handleCancel() {
 function resetWizard() {
   currentStepIndex.value = 0
   highestStepReached.value = 0
-  skillForm.value = { name: '', description: '', systemPrompt: '', responseTemplate: '', toolNames: [] }
+  skillForm.value = { name: '', description: '', systemPrompt: '', responseTemplate: '', toolNames: [], requiresApproval: false }
   skillDetailsFormRef.value?.resetPreviews()
   isStep1Valid.value = false
   validationError.value = ''
@@ -462,6 +468,7 @@ function handleSubmit() {
     systemPrompt: skillForm.value.systemPrompt,
     responseTemplate: skillForm.value.responseTemplate.trim() || undefined,
     toolNames: [...skillForm.value.toolNames],
+    requiresApproval: skillForm.value.requiresApproval,
   }
 
   emit('create', { skill, references: [...pendingReferences.value] })

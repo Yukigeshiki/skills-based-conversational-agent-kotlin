@@ -7,6 +7,7 @@ export interface Skill {
   responseTemplate: string | null
   isProtected: boolean
   toolNames: string[]
+  requiresApproval: boolean
   createdAt: string
   updatedAt: string
 }
@@ -18,6 +19,7 @@ export interface SkillFormData {
   systemPrompt: string
   responseTemplate: string
   toolNames: string[]
+  requiresApproval: boolean
 }
 
 /** Lightweight skill projection without the system prompt. */

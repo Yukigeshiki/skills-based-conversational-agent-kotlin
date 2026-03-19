@@ -85,7 +85,8 @@ class SkillService(
                 description = request.description,
                 systemPrompt = request.systemPrompt,
                 responseTemplate = request.responseTemplate,
-                toolNames = request.toolNames
+                toolNames = request.toolNames,
+                requiresApproval = request.requiresApproval
             )
             val persisted = skillRepository.save(skill)
             embedSkill(persisted)

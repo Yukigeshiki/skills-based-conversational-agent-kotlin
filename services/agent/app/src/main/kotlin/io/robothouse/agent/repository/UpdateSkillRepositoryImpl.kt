@@ -39,6 +39,10 @@ class UpdateSkillRepositoryImpl(
             setClauses.add("s.toolNames = :toolNames")
             params["toolNames"] = it
         }
+        request.requiresApproval?.let {
+            setClauses.add("s.requiresApproval = :requiresApproval")
+            params["requiresApproval"] = it
+        }
 
         if (setClauses.isEmpty()) {
             return entityManager.find(Skill::class.java, id)

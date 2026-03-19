@@ -81,6 +81,9 @@ object AgentGraphBuilder {
         val compileConfig = CompileConfig.builder()
             .recursionLimit(ctx.maxIterations * 3 + 1)
         ctx.checkpointSaver?.let { compileConfig.checkpointSaver(it) }
+        if (ctx.requiresApproval && ctx.checkpointSaver != null) {
+            compileConfig.interruptBefore(EXECUTE_TOOLS)
+        }
         return graph.compile(compileConfig.build())
     }
 

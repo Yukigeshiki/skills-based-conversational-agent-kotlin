@@ -73,6 +73,7 @@ const form = ref<SkillFormData>({
   systemPrompt: '',
   responseTemplate: '',
   toolNames: [],
+  requiresApproval: false,
 })
 
 const isFormValid = ref(false)
@@ -92,6 +93,7 @@ watch(open, async (isOpen) => {
       systemPrompt: skill.systemPrompt,
       responseTemplate: skill.responseTemplate ?? '',
       toolNames: [...skill.toolNames],
+      requiresApproval: skill.requiresApproval,
     }
   } catch {
     open.value = false
@@ -113,6 +115,7 @@ function handleSubmit() {
     systemPrompt: form.value.systemPrompt,
     responseTemplate: form.value.responseTemplate.trim() || undefined,
     toolNames: [...form.value.toolNames],
+    requiresApproval: form.value.requiresApproval,
   }
 
   emit('edit', data)

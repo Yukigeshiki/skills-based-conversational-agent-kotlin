@@ -2,17 +2,19 @@ package io.robothouse.agent.service
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.robothouse.agent.config.AgentProperties
+import io.robothouse.agent.entity.PendingApproval
 import io.robothouse.agent.graph.orchestration.OrchestrationGraphBuilder
 import io.robothouse.agent.graph.orchestration.OrchestrationGraphContext
 import io.robothouse.agent.graph.orchestration.OrchestrationGraphState
 import io.robothouse.agent.graph.checkpoint.OrchestrationGraphStateSerializer
 import io.robothouse.agent.graph.checkpoint.PostgresCheckpointSaver
 import io.robothouse.agent.graph.unwrapGraphException
-import org.bsc.langgraph4j.RunnableConfig
 import io.robothouse.agent.listener.AgentEventListener
 import io.robothouse.agent.model.AgentEvent
+import io.robothouse.agent.model.ApprovalDecision
 import io.robothouse.agent.model.ConversationMessage
 import io.robothouse.agent.util.log
+import org.bsc.langgraph4j.RunnableConfig
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
@@ -63,6 +65,142 @@ class StreamingChatService(
      */
     fun streamChat(userMessage: String, conversationId: String?): SseEmitter {
         val resolvedConversationId = conversationId ?: UUID.randomUUID().toString()
+
+        return executeWithSseEmitter { listener, activities ->
+            val ctx = OrchestrationGraphContext(
+                skillRouterService = skillRouterService,
+                dynamicAgentService = dynamicAgentService,
+                conversationMemoryService = conversationMemoryService,
+                responseValidationService = responseValidationService,
+                listener = listener,
+                stateSerializer = orchestrationGraphStateSerializer,
+                checkpointSaver = checkpointSaver
+            )
+
+            val compiledGraph = OrchestrationGraphBuilder.build(ctx)
+
+            val initialState = mapOf<String, Any>(
+                OrchestrationGraphState.CONVERSATION_ID to resolvedConversationId,
+                OrchestrationGraphState.USER_MESSAGE to userMessage
+            )
+
+            val runnableConfig = checkpointSaver?.let {
+                RunnableConfig.builder()
+                    .threadId(resolvedConversationId)
+                    .build()
+            }
+
+            val finalState = try {
+                val result = if (runnableConfig != null) {
+                    compiledGraph.invoke(initialState, runnableConfig)
+                } else {
+                    compiledGraph.invoke(initialState)
+                }
+                result.orElseThrow {
+                    log.warn { "Orchestration graph produced no final state for conversation: id=$resolvedConversationId" }
+                    IllegalStateException("Orchestration graph produced no final state")
+                }
+            } catch (e: Exception) {
+                val unwrapped = unwrapGraphException(e)
+                log.warn { "Orchestration graph execution failed for conversation: id=$resolvedConversationId, error=${unwrapped.message}" }
+                throw unwrapped
+            }
+
+            val result = OrchestrationGraphState(finalState.data())
+
+            // If tools are awaiting approval, skip storing the assistant message
+            if (result.agentResponse.awaitingApproval) {
+                return@executeWithSseEmitter
+            }
+
+            try {
+                conversationMemoryService.addMessage(
+                    resolvedConversationId,
+                    ConversationMessage(
+                        role = "assistant",
+                        content = result.agentResponse.response,
+                        skill = result.agentResponse.skill,
+                        activities = activities.toList()
+                    )
+                )
+            } catch (e: Exception) {
+                log.warn { "Failed to store assistant response: ${e.message}" }
+                listener.onEvent(AgentEvent.WarningEvent(message = "Failed to save this response to conversation memory"))
+            }
+        }
+    }
+
+    /**
+     * Resumes execution after a human approves or rejects pending tool calls.
+     * Creates a new SSE emitter for the remainder of the execution.
+     * If approved, the agent graph resumes from the checkpoint and completes.
+     * If rejected, a rejection message is emitted and the emitter closes.
+     */
+    fun resumeAfterApproval(
+        approval: PendingApproval,
+        decision: ApprovalDecision
+    ): SseEmitter {
+        return executeWithSseEmitter { listener, activities ->
+            listener.onEvent(
+                AgentEvent.ApprovalResolvedEvent(
+                    approvalId = approval.id!!,
+                    decision = decision
+                )
+            )
+
+            if (decision == ApprovalDecision.REJECTED) {
+                listener.onEvent(
+                    AgentEvent.FinalResponseEvent(
+                        response = "Tool execution was rejected by the user.",
+                        skill = approval.skillName
+                    )
+                )
+
+                try {
+                    conversationMemoryService.addMessage(
+                        approval.conversationId,
+                        ConversationMessage(
+                            role = "assistant",
+                            content = "Tool execution was rejected by the user.",
+                            skill = approval.skillName,
+                            activities = activities.toList()
+                        )
+                    )
+                } catch (e: Exception) {
+                    log.warn { "Failed to store rejection response: ${e.message}" }
+                }
+
+                return@executeWithSseEmitter
+            }
+
+            // APPROVED — resume the agent graph
+            val response = dynamicAgentService.resumeAfterApproval(approval, listener)
+
+            try {
+                conversationMemoryService.addMessage(
+                    approval.conversationId,
+                    ConversationMessage(
+                        role = "assistant",
+                        content = response.response,
+                        skill = response.skill,
+                        activities = activities.toList()
+                    )
+                )
+            } catch (e: Exception) {
+                log.warn { "Failed to store assistant response after approval: ${e.message}" }
+            }
+        }
+    }
+
+    /**
+     * Creates an SSE emitter with heartbeat, event listener, and error handling,
+     * then executes the given [block] on a virtual thread. The block receives
+     * the event listener and activities list. SSE lifecycle (heartbeat start/stop,
+     * emitter completion, error handling) is managed automatically.
+     */
+    private fun executeWithSseEmitter(
+        block: (listener: AgentEventListener, activities: MutableList<AgentEvent>) -> Unit
+    ): SseEmitter {
         val timeoutMillis = agentProperties.toolExecutionTimeoutSeconds * 1000 + 5000L
         val emitter = SseEmitter(timeoutMillis)
 
@@ -99,61 +237,7 @@ class StreamingChatService(
                         }
                     }
 
-                    val ctx = OrchestrationGraphContext(
-                        skillRouterService = skillRouterService,
-                        dynamicAgentService = dynamicAgentService,
-                        conversationMemoryService = conversationMemoryService,
-                        responseValidationService = responseValidationService,
-                        listener = listener,
-                        stateSerializer = orchestrationGraphStateSerializer,
-                        checkpointSaver = checkpointSaver
-                    )
-
-                    val compiledGraph = OrchestrationGraphBuilder.build(ctx)
-
-                    val initialState = mapOf<String, Any>(
-                        OrchestrationGraphState.CONVERSATION_ID to resolvedConversationId,
-                        OrchestrationGraphState.USER_MESSAGE to userMessage
-                    )
-
-                    val runnableConfig = checkpointSaver?.let {
-                        RunnableConfig.builder()
-                            .threadId(resolvedConversationId)
-                            .build()
-                    }
-
-                    val finalState = try {
-                        val result = if (runnableConfig != null) {
-                            compiledGraph.invoke(initialState, runnableConfig)
-                        } else {
-                            compiledGraph.invoke(initialState)
-                        }
-                        result.orElseThrow {
-                            log.warn { "Orchestration graph produced no final state for conversation: id=$resolvedConversationId" }
-                            IllegalStateException("Orchestration graph produced no final state")
-                        }
-                    } catch (e: Exception) {
-                        val unwrapped = unwrapGraphException(e)
-                        log.warn { "Orchestration graph execution failed for conversation: id=$resolvedConversationId, error=${unwrapped.message}" }
-                        throw unwrapped
-                    }
-
-                    val result = OrchestrationGraphState(finalState.data())
-
-                    try {
-                        conversationMemoryService.addMessage(
-                            resolvedConversationId,
-                            ConversationMessage(
-                                role = "assistant",
-                                content = result.agentResponse.response,
-                                skill = result.agentResponse.skill,
-                                activities = activities.toList()
-                            )
-                        )
-                    } catch (e: Exception) {
-                        log.warn { "Failed to store assistant response: ${e.message}" }
-                        listener.onEvent(AgentEvent.WarningEvent(message = "Failed to save this response to conversation memory"))
-                    }
+                    block(listener, activities)
 
                     heartbeat.cancel(false)
                     emitter.complete()

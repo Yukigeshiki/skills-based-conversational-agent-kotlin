@@ -16,7 +16,10 @@ import io.robothouse.agent.graph.agent.AgentGraphState
 import io.robothouse.agent.graph.checkpoint.AgentGraphStateSerializer
 import io.robothouse.agent.graph.checkpoint.PostgresCheckpointSaver
 import io.robothouse.agent.graph.unwrapGraphException
+import io.robothouse.agent.entity.PendingApproval
+import io.robothouse.agent.model.PendingToolCall
 import io.robothouse.agent.tool.DelegateToSkillExecutorFactory
+import org.bsc.langgraph4j.GraphInput
 import org.bsc.langgraph4j.RunnableConfig
 import io.robothouse.agent.listener.AgentEventListener
 import io.robothouse.agent.model.AgentEvent
@@ -50,6 +53,7 @@ class DynamicAgentService(
     private val referenceRetrievalService: ReferenceRetrievalService,
     private val skillService: SkillService,
     private val delegateToSkillExecutorFactory: DelegateToSkillExecutorFactory,
+    private val pendingApprovalService: PendingApprovalService,
     @param:Autowired(required = false) private val agentGraphStateSerializer: AgentGraphStateSerializer? = null,
     @param:Autowired(required = false) @param:Qualifier("agentCheckpointSaver") private val checkpointSaver: PostgresCheckpointSaver? = null
 ) {
@@ -74,8 +78,10 @@ class DynamicAgentService(
         log.debug { "Created plan with ${plan.steps.size} step(s): ${plan.reasoning}" }
         emitEvent(listener) { AgentEvent.PlanCreatedEvent(plan = plan) }
 
-        // 2. Fast path: single-step plans skip the per-step loop and execute directly
-        if (plan.steps.size <= 1) {
+        val approvalRequired = skill.requiresApproval && checkpointSaver != null
+
+        // 2. Fast path: single-step plans (or approval-required skills forced to single step)
+        if (plan.steps.size <= 1 || approvalRequired) {
             val retrievedChunks = skill.id?.let { referenceRetrievalService.retrieveChunks(it, userMessage) } ?: emptyList()
             val effectiveSystemPrompt = buildSystemPrompt(skill, retrievedChunks)
             val specifications = toolService.getSpecificationsByNames(skill.toolNames)
@@ -89,7 +95,8 @@ class DynamicAgentService(
                 skill.name,
                 listener,
                 conversationHistory = conversationHistory,
-                conversationId = conversationId
+                conversationId = conversationId,
+                requiresApproval = approvalRequired
             )
             return response.copy(plan = plan)
         }
@@ -429,7 +436,8 @@ class DynamicAgentService(
         emitFinalResponse: Boolean = true,
         conversationHistory: List<ConversationMessage> = emptyList(),
         conversationId: String? = null,
-        delegationDepth: Int = 0
+        delegationDepth: Int = 0,
+        requiresApproval: Boolean = false
     ): AgentResponse {
         val messages = mutableListOf<ChatMessage>(SystemMessage.from(systemPrompt))
         conversationHistory.forEach { msg ->
@@ -471,7 +479,8 @@ class DynamicAgentService(
             checkTimeout = ::checkTimeout,
             stateSerializer = agentGraphStateSerializer,
             checkpointSaver = checkpointSaver,
-            conversationId = conversationId
+            conversationId = conversationId,
+            requiresApproval = requiresApproval && checkpointSaver != null
         )
 
         val compiledGraph = AgentGraphBuilder.build(ctx)
@@ -483,10 +492,14 @@ class DynamicAgentService(
             AgentGraphState.RESPONSE to ""
         )
 
+        // Use a stable thread ID for approval-required skills so the graph can be resumed
+        val threadId = if (requiresApproval && checkpointSaver != null) {
+            "agent:${conversationId ?: "unknown"}:approval:${java.util.UUID.randomUUID()}"
+        } else {
+            "agent:${conversationId ?: "unknown"}:${System.nanoTime()}"
+        }
         val runnableConfig = checkpointSaver?.let {
-            RunnableConfig.builder()
-                .threadId("agent:${conversationId ?: "unknown"}:${System.nanoTime()}")
-                .build()
+            RunnableConfig.builder().threadId(threadId).build()
         }
 
         val finalState = try {
@@ -506,6 +519,41 @@ class DynamicAgentService(
         }
 
         val result = AgentGraphState(finalState.data())
+
+        // Detect graph interrupt: tools pending but not yet executed
+        if (!result.done && requiresApproval && checkpointSaver != null) {
+            val pendingTools = result.messages
+                .filterIsInstance<AiMessage>()
+                .lastOrNull()
+                ?.toolExecutionRequests()
+                ?.map { PendingToolCall(toolName = it.name(), arguments = it.arguments()) }
+                ?: emptyList()
+
+            val approval = pendingApprovalService.create(
+                conversationId = conversationId ?: "",
+                threadId = threadId,
+                skillName = skillName,
+                toolCalls = pendingTools
+            )
+
+            log.info { "Tool approval required for skill: name=$skillName, approvalId=${approval.id}" }
+            emitEvent(listener) {
+                AgentEvent.ApprovalRequiredEvent(
+                    approvalId = approval.id!!,
+                    toolCalls = pendingTools,
+                    skillName = skillName
+                )
+            }
+
+            return AgentResponse(
+                response = "",
+                skill = skillName,
+                awaitingApproval = true,
+                approvalId = approval.id,
+                iterations = taskMemory.iterations
+            )
+        }
+
         log.info { "Agent completed for skill: name=$skillName, toolExecutions=${result.steps.size}" }
 
         return AgentResponse(
@@ -547,6 +595,84 @@ class DynamicAgentService(
             emitFinalResponse = false,
             conversationId = conversationId,
             delegationDepth = delegationDepth
+        )
+    }
+
+    /**
+     * Resumes a previously interrupted agent graph after human approval.
+     * Rebuilds the graph context from the pending approval record and
+     * calls `GraphInput.resume()` with the stored thread ID.
+     */
+    fun resumeAfterApproval(
+        approval: PendingApproval,
+        listener: AgentEventListener
+    ): AgentResponse {
+        val skill = skillService.findByName(approval.skillName)
+            ?: throw IllegalStateException("Skill '${approval.skillName}' not found for approval resume")
+
+        val retrievedChunks = skill.id?.let {
+            referenceRetrievalService.retrieveChunks(it, "")
+        } ?: emptyList()
+        val systemPrompt = buildSystemPrompt(skill, retrievedChunks)
+        val specifications = toolService.getSpecificationsByNames(skill.toolNames)
+        val executors = toolService.getExecutorsByNames(skill.toolNames)
+
+        val delegateExecutor = delegateToSkillExecutorFactory.createExecutor(
+            currentDepth = 0,
+            maxDepth = agentProperties.maxDelegationDepth,
+            currentSkillName = skill.name,
+            listener = listener,
+            conversationId = approval.conversationId,
+            delegateFn = ::executeStepForDelegation
+        )
+        val allSpecifications = specifications + delegateToSkillExecutorFactory.specification()
+        val allExecutors = executors + (DelegateToSkillExecutorFactory.TOOL_NAME to delegateExecutor)
+
+        val taskMemory = TaskMemory()
+
+        val ctx = AgentGraphContext(
+            agentChatModel = agentChatModel,
+            systemPrompt = systemPrompt,
+            skillName = skill.name,
+            specifications = allSpecifications,
+            executors = allExecutors,
+            listener = listener,
+            emitFinalResponse = true,
+            taskMemory = taskMemory,
+            maxIterations = agentProperties.maxIterations,
+            startTime = System.currentTimeMillis(),
+            timeoutMillis = agentProperties.toolExecutionTimeoutSeconds * 1000,
+            emitEvent = ::emitEvent,
+            executeTool = ::executeTool,
+            checkTimeout = ::checkTimeout,
+            stateSerializer = agentGraphStateSerializer,
+            checkpointSaver = checkpointSaver,
+            conversationId = approval.conversationId,
+            requiresApproval = true
+        )
+
+        val compiledGraph = AgentGraphBuilder.build(ctx)
+        val runnableConfig = RunnableConfig.builder().threadId(approval.threadId).build()
+
+        val finalState = try {
+            compiledGraph.invoke(GraphInput.resume(), runnableConfig)
+                .orElseThrow {
+                    log.warn { "Agent graph produced no state after approval resume for thread: ${approval.threadId}" }
+                    IllegalStateException("Agent graph produced no state after approval resume")
+                }
+        } catch (e: Exception) {
+            throw unwrapGraphException(e)
+        }
+
+        val result = AgentGraphState(finalState.data())
+        log.info { "Agent resumed after approval for skill: name=${skill.name}, toolExecutions=${result.steps.size}" }
+
+        return AgentResponse(
+            response = result.response,
+            skill = skill.name,
+            steps = result.steps,
+            toolExecutionCount = result.steps.size,
+            iterations = taskMemory.iterations
         )
     }
 

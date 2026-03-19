@@ -1,6 +1,7 @@
 package io.robothouse.agent.controller
 
 import io.robothouse.agent.model.ConversationMessage
+import io.robothouse.agent.service.PendingApprovalService
 import io.robothouse.agent.service.ConversationMemoryService
 import io.robothouse.agent.service.StreamingChatService
 import org.junit.jupiter.api.Test
@@ -37,6 +38,9 @@ class ChatControllerTest {
 
         @Bean
         fun conversationMemoryService(): ConversationMemoryService = mock()
+
+        @Bean
+        fun pendingApprovalService(): PendingApprovalService = mock()
     }
 
     @Autowired

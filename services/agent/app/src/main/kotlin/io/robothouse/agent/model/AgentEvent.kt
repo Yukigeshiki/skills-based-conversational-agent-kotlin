@@ -27,6 +27,8 @@ import java.time.Instant
     JsonSubTypes.Type(value = AgentEvent.SkillReroutedEvent::class, name = "skill_rerouted"),
     JsonSubTypes.Type(value = AgentEvent.SkillHandoffStartedEvent::class, name = "skill_handoff_started"),
     JsonSubTypes.Type(value = AgentEvent.SkillHandoffCompletedEvent::class, name = "skill_handoff_completed"),
+    JsonSubTypes.Type(value = AgentEvent.ApprovalRequiredEvent::class, name = "approval_required"),
+    JsonSubTypes.Type(value = AgentEvent.ApprovalResolvedEvent::class, name = "approval_resolved"),
     JsonSubTypes.Type(value = AgentEvent.WarningEvent::class, name = "warning"),
     JsonSubTypes.Type(value = AgentEvent.ErrorEvent::class, name = "error"),
     JsonSubTypes.Type(value = AgentEvent.HeartbeatEvent::class, name = "heartbeat")
@@ -196,6 +198,32 @@ sealed class AgentEvent {
         override val timestamp: Instant = Instant.now()
     ) : AgentEvent() {
         override val type: String = "skill_handoff_completed"
+    }
+
+    /**
+     * Emitted when a skill with `requiresApproval` triggers tool calls and
+     * the agent loop pauses before execution. Contains the pending tool
+     * call details for the human to review.
+     */
+    data class ApprovalRequiredEvent(
+        val approvalId: java.util.UUID,
+        val toolCalls: List<PendingToolCall>,
+        val skillName: String,
+        override val timestamp: Instant = Instant.now()
+    ) : AgentEvent() {
+        override val type: String = "approval_required"
+    }
+
+    /**
+     * Emitted when a human resolves a pending tool approval, either
+     * approving or rejecting the tool execution.
+     */
+    data class ApprovalResolvedEvent(
+        val approvalId: java.util.UUID,
+        val decision: ApprovalDecision,
+        override val timestamp: Instant = Instant.now()
+    ) : AgentEvent() {
+        override val type: String = "approval_resolved"
     }
 
     /**

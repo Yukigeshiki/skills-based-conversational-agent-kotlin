@@ -38,5 +38,6 @@ data class AgentGraphContext(
     val checkTimeout: CheckTimeoutFn,
     val stateSerializer: StateSerializer<AgentGraphState>? = null,
     val checkpointSaver: BaseCheckpointSaver? = null,
-    val conversationId: String? = null
+    val conversationId: String? = null,
+    val requiresApproval: Boolean = false
 )

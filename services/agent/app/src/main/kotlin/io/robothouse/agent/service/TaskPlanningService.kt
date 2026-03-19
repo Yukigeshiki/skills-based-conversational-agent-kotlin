@@ -33,30 +33,29 @@ class TaskPlanningService(
         val PLANNING_PROMPT = """
             |You are a task planner. Given a user request and a list of available skills, decide whether the request needs multiple execution steps.
             |
+            |## When to use a single step
+            |
+            |Use a single step for:
+            |- Questions that can be answered in one pass, even if the answer covers multiple topics
+            |- Requests that use a single tool call
+            |- Conversational or knowledge-based queries with no tool use
+            |- Follow-ups like "yes", "do it", "tell me more", "dive deeper", "continue", etc.
+            |
+            |**Default to a single step.** When in doubt, use one step. Never split a single topic into multiple steps.
+            |
             |## When to use multiple steps
             |
-            |Use multiple steps **only** when the request genuinely requires it — i.e. the output of one step informs the next, or multiple distinct tasks are needed.
+            |Use multiple steps when the request requires **separate tool calls** whose results need to be combined, or explicitly asks for **multiple distinct tasks**.
             |
-            |Examples of multi-step requests:
-            |- "What's the time in Tokyo and New York?" → step 1: get Tokyo time (dependsOn: []), step 2: get New York time (dependsOn: []) — independent, can run in parallel
-            |- "Look up the weather then suggest an outfit" → step 1: fetch weather (dependsOn: []), step 2: suggest outfit based on weather (dependsOn: [1]) — step 2 needs step 1's result
+            |Examples:
+            |- "What's the time in Tokyo and New York?" → 2 steps, each with a separate tool call
+            |- "Look up the weather then suggest an outfit" → 2 steps, step 2 depends on step 1
             |
             |## Step dependencies
             |
-            |When creating multiple steps, declare dependencies using the `dependsOn` field:
-            |- `"dependsOn": []` — step can run immediately, in parallel with other independent steps
-            |- `"dependsOn": [1]` — step waits for step 1 to complete before starting
-            |- Steps that need the output of earlier steps MUST list those steps in `dependsOn`
-            |- Independent steps should have empty `dependsOn` so they can execute concurrently
-            |
-            |## When to use a single step
-            |
-            |Use a single step for everything else, including:
-            |- Questions that can be answered in one pass, even if the answer has multiple sections
-            |- Requests that use a single tool call
-            |- Conversational or knowledge-based queries with no tool use
-            |
-            |**Default to a single step.** When in doubt, use one step.
+            |When creating multiple steps, declare dependencies using `dependsOn`:
+            |- `"dependsOn": []` — step can run in parallel with other independent steps
+            |- `"dependsOn": [1]` — step waits for step 1 to complete
             |
             |## Available Skills
             |

@@ -1,8 +1,12 @@
 package io.robothouse.agent.model
 
+import java.util.UUID
+
 /**
  * Response from the agent containing the final text response,
  * the matched skill, tool execution details, and optional task plan results.
+ * When [awaitingApproval] is true, tool execution was paused pending
+ * human approval and [approvalId] identifies the pending approval record.
  */
 data class AgentResponse(
     val response: String,
@@ -11,7 +15,9 @@ data class AgentResponse(
     val toolExecutionCount: Int = 0,
     val plan: TaskPlan? = null,
     val planStepResults: List<PlanStepResult>? = null,
-    val iterations: List<AgentIteration> = emptyList()
+    val iterations: List<AgentIteration> = emptyList(),
+    val awaitingApproval: Boolean = false,
+    val approvalId: UUID? = null
 )
 
 /**

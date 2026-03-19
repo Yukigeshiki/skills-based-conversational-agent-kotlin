@@ -6,6 +6,7 @@ CREATE TABLE IF NOT EXISTS skills (
     response_template VARCHAR(4000),
     protected BOOLEAN NOT NULL DEFAULT FALSE,
     tool_names VARCHAR(255) NOT NULL,
+    requires_approval BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );

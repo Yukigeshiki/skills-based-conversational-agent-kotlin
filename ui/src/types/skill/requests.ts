@@ -15,6 +15,7 @@ export interface CreateSkillRequest {
   systemPrompt: string
   responseTemplate?: string
   toolNames: string[]
+  requiresApproval: boolean
 }
 
 /** Request body for partially updating an existing skill. All fields are optional. */
@@ -24,4 +25,5 @@ export interface UpdateSkillRequest {
   systemPrompt?: string
   responseTemplate?: string
   toolNames?: string[]
+  requiresApproval?: boolean
 }

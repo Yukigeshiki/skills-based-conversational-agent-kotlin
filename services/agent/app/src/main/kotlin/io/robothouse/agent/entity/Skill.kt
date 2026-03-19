@@ -44,6 +44,9 @@ class Skill(
     @Convert(converter = StringListConverter::class)
     var toolNames: List<String> = emptyList(),
 
+    @Column(name = "requires_approval", nullable = false)
+    var requiresApproval: Boolean = false,
+
     @Column(name = "created_at", nullable = false, updatable = false)
     var createdAt: Instant = Instant.now(),
 

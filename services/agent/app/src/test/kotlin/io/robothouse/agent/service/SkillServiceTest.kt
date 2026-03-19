@@ -139,7 +139,8 @@ class SkillServiceTest {
             name = "new-skill",
             description = "A new skill",
             systemPrompt = "System prompt",
-            toolNames = listOf("TestTool")
+            toolNames = listOf("TestTool"),
+            requiresApproval = false
         )
         val embedding = Embedding(FloatArray(384) { 0.1f })
 
@@ -162,7 +163,8 @@ class SkillServiceTest {
             description = "A skill with template",
             systemPrompt = "System prompt",
             responseTemplate = "Subject: ...\nBody: ...",
-            toolNames = listOf("TestTool")
+            toolNames = listOf("TestTool"),
+            requiresApproval = false
         )
         val embedding = Embedding(FloatArray(384) { 0.1f })
 
@@ -182,7 +184,8 @@ class SkillServiceTest {
         val request = CreateSkillRequest(
             name = "test-skill",
             description = "A new skill",
-            systemPrompt = "System prompt"
+            systemPrompt = "System prompt",
+            requiresApproval = false
         )
 
         whenever(skillRepository.findByName("test-skill")).thenReturn(skill)
@@ -203,7 +206,8 @@ class SkillServiceTest {
             name = "test-skill",
             description = "Updated description",
             systemPrompt = "You are a test assistant.",
-            toolNames = listOf("TestTool")
+            toolNames = listOf("TestTool"),
+            requiresApproval = false
         )
         val embedding = Embedding(FloatArray(384) { 0.2f })
 
@@ -226,7 +230,8 @@ class SkillServiceTest {
             name = "renamed-skill",
             description = "A test skill",
             systemPrompt = "You are a test assistant.",
-            toolNames = listOf("TestTool")
+            toolNames = listOf("TestTool"),
+            requiresApproval = false
         )
         val embedding = Embedding(FloatArray(384) { 0.2f })
 
@@ -325,7 +330,8 @@ class SkillServiceTest {
         val request = CreateSkillRequest(
             name = "new-skill",
             description = "A new skill",
-            systemPrompt = "System prompt"
+            systemPrompt = "System prompt",
+            requiresApproval = false
         )
         val embedding = Embedding(FloatArray(384) { 0.1f })
 

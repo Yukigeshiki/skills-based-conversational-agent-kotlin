@@ -1,8 +1,10 @@
 package io.robothouse.agent.controller
 
+import io.robothouse.agent.model.ApprovalRequest
 import io.robothouse.agent.model.ChatRequest
 import io.robothouse.agent.model.ConversationMessage
 import io.robothouse.agent.service.ConversationMemoryService
+import io.robothouse.agent.service.PendingApprovalService
 import io.robothouse.agent.service.StreamingChatService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.responses.ApiResponse
@@ -36,7 +38,8 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 @Validated
 class ChatController(
     private val streamingChatService: StreamingChatService,
-    private val conversationMemoryService: ConversationMemoryService
+    private val conversationMemoryService: ConversationMemoryService,
+    private val pendingApprovalService: PendingApprovalService
 ) {
 
     @Operation(summary = "Stream a chat interaction via SSE", description = "Sends a message and streams agent events as Server-Sent Events")
@@ -60,5 +63,22 @@ class ChatController(
     @GetMapping("/{conversationId}/history")
     fun getHistory(@PathVariable @Pattern(regexp = "^[a-f0-9\\-]{36}$") conversationId: String): List<ConversationMessage> {
         return conversationMemoryService.getHistory(conversationId)
+    }
+
+    @Operation(summary = "Approve or reject pending tool execution", description = "Resolves a pending tool approval and streams the remaining agent events as SSE")
+    @ApiResponses(
+        value = [
+            ApiResponse(responseCode = "200", description = "Approval resolved, SSE stream started"),
+            ApiResponse(responseCode = "404", description = "No pending approval found"),
+            ApiResponse(responseCode = "409", description = "Approval already resolved")
+        ]
+    )
+    @PostMapping("/{conversationId}/approve", produces = [MediaType.TEXT_EVENT_STREAM_VALUE])
+    fun approve(
+        @PathVariable conversationId: String,
+        @RequestBody @Valid request: ApprovalRequest
+    ): SseEmitter {
+        val approval = pendingApprovalService.resolve(request)
+        return streamingChatService.resumeAfterApproval(approval, request.decision)
     }
 }
