@@ -45,3 +45,5 @@ key.json
 /services/agent/wrapper/
 /services/agent/.tmp/
 /services/agent/kotlin-profile/
+
+INFO.md

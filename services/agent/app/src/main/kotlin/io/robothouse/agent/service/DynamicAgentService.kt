@@ -102,7 +102,7 @@ class DynamicAgentService(
         }
 
         // 3. Multi-step path: execute steps in dependency-based batches (independent steps run in parallel)
-        val stepResults = executeStepsByBatch(plan.steps, skill, userMessage, listener, conversationId)
+        val stepResults = executeStepsByBatch(plan.steps, skill, listener, conversationId)
         val allToolSteps = stepResults.flatMap { it.toolSteps }
 
         // 4. Assemble step results into the final response
@@ -131,7 +131,6 @@ class DynamicAgentService(
     private fun executeStepsByBatch(
         steps: List<PlanStep>,
         skill: Skill,
-        userMessage: String,
         listener: AgentEventListener,
         conversationId: String?
     ): List<PlanStepResult> {
@@ -153,7 +152,7 @@ class DynamicAgentService(
                 val planStep = batch.first()
                 val stepSkill = resolveStepSkill(planStep, skill)
                 prepareAndEmitStepStart(planStep, stepSkill, listener)
-                val context = buildDependencyContext(planStep, completedResults, userMessage)
+                val context = buildDependencyContext(planStep, completedResults)
 
                 if (!executeAndRecordStep(planStep, stepSkill, context, listener, conversationId, stepResults)) {
                     failed = true
@@ -161,7 +160,7 @@ class DynamicAgentService(
                 stepResults.last().let { completedResults[planStep.stepNumber] = it }
             } else {
                 // Multiple steps — execute concurrently with virtual threads
-                val batchResults = executeBatchConcurrently(batch, skill, userMessage, completedResults, listener, conversationId)
+                val batchResults = executeBatchConcurrently(batch, skill, completedResults, listener, conversationId)
                 for (result in batchResults) {
                     stepResults.add(result)
                     completedResults[result.step.stepNumber] = result
@@ -182,7 +181,6 @@ class DynamicAgentService(
     private fun executeBatchConcurrently(
         batch: List<PlanStep>,
         skill: Skill,
-        userMessage: String,
         completedResults: Map<Int, PlanStepResult>,
         listener: AgentEventListener,
         conversationId: String?
@@ -197,7 +195,7 @@ class DynamicAgentService(
             val stepSystemPrompt = buildSystemPrompt(stepSkill, stepChunks)
             val stepSpecs = toolService.getSpecificationsByNames(stepSkill.toolNames)
             val stepExecutors = toolService.getExecutorsByNames(stepSkill.toolNames)
-            val context = buildDependencyContext(planStep, completedResults, userMessage)
+            val context = buildDependencyContext(planStep, completedResults)
 
             planStep to executor.submit(java.util.concurrent.Callable {
                 emitEvent(listener) {
@@ -209,7 +207,8 @@ class DynamicAgentService(
                 }
                 executeStep(
                     stepSystemPrompt, context, stepSpecs, stepExecutors, stepSkill.name, listener,
-                    emitFinalResponse = false, conversationId = conversationId
+                    emitFinalResponse = false, conversationId = conversationId,
+                    includeDelegation = false
                 )
             })
         }
@@ -284,8 +283,7 @@ class DynamicAgentService(
      */
     private fun buildDependencyContext(
         planStep: PlanStep,
-        completedResults: Map<Int, PlanStepResult>,
-        userMessage: String
+        completedResults: Map<Int, PlanStepResult>
     ): String {
         val depResults = planStep.dependsOn.mapNotNull { completedResults[it] }
         return if (depResults.isNotEmpty()) {
@@ -294,7 +292,9 @@ class DynamicAgentService(
             }
             "Prior step results:\n$depSummary\n\nNow execute this step: ${planStep.description}"
         } else {
-            "Original request: $userMessage\n\nExecute this step: ${planStep.description}"
+            // Only send the step description — not the full original request — to prevent
+            // the LLM from trying to handle the entire user request in a single step
+            planStep.description
         }
     }
 
@@ -352,7 +352,8 @@ class DynamicAgentService(
         return try {
             val stepResponse = executeStep(
                 stepSystemPrompt, context, stepSpecs, stepExecutors, stepSkill.name, listener,
-                emitFinalResponse = false, conversationId = conversationId
+                emitFinalResponse = false, conversationId = conversationId,
+                includeDelegation = false
             )
             stepResults.add(
                 PlanStepResult(
@@ -437,7 +438,8 @@ class DynamicAgentService(
         conversationHistory: List<ConversationMessage> = emptyList(),
         conversationId: String? = null,
         delegationDepth: Int = 0,
-        requiresApproval: Boolean = false
+        requiresApproval: Boolean = false,
+        includeDelegation: Boolean = true
     ): AgentResponse {
         val messages = mutableListOf<ChatMessage>(SystemMessage.from(systemPrompt))
         conversationHistory.forEach { msg ->
@@ -448,17 +450,25 @@ class DynamicAgentService(
         }
         appendUserMessage(messages, userMessage)
 
-        // Inject the delegateToSkill meta-tool alongside the skill's own tools
-        val delegateExecutor = delegateToSkillExecutorFactory.createExecutor(
-            currentDepth = delegationDepth,
-            maxDepth = agentProperties.maxDelegationDepth,
-            currentSkillName = skillName,
-            listener = listener,
-            conversationId = conversationId,
-            delegateFn = ::executeStepForDelegation
-        )
-        val allSpecifications = specifications + delegateToSkillExecutorFactory.specification()
-        val allExecutors = executors + (DelegateToSkillExecutorFactory.TOOL_NAME to delegateExecutor)
+        // Include delegateToSkill only for single-step execution — multi-step plans
+        // handle cross-skill orchestration via the planner, not runtime delegation
+        val allSpecifications: List<ToolSpecification>
+        val allExecutors: Map<String, ToolExecutor>
+        if (includeDelegation) {
+            val delegateExecutor = delegateToSkillExecutorFactory.createExecutor(
+                currentDepth = delegationDepth,
+                maxDepth = agentProperties.maxDelegationDepth,
+                currentSkillName = skillName,
+                listener = listener,
+                conversationId = conversationId,
+                delegateFn = ::executeStepForDelegation
+            )
+            allSpecifications = specifications + delegateToSkillExecutorFactory.specification(skillName)
+            allExecutors = executors + (DelegateToSkillExecutorFactory.TOOL_NAME to delegateExecutor)
+        } else {
+            allSpecifications = specifications
+            allExecutors = executors
+        }
 
         val taskMemory = TaskMemory()
 
@@ -625,7 +635,7 @@ class DynamicAgentService(
             conversationId = approval.conversationId,
             delegateFn = ::executeStepForDelegation
         )
-        val allSpecifications = specifications + delegateToSkillExecutorFactory.specification()
+        val allSpecifications = specifications + delegateToSkillExecutorFactory.specification(skill.name)
         val allExecutors = executors + (DelegateToSkillExecutorFactory.TOOL_NAME to delegateExecutor)
 
         val taskMemory = TaskMemory()

@@ -41,7 +41,7 @@ class DelegateToSkillExecutorFactoryTest {
 
     @Test
     fun `specification has correct name and parameters`() {
-        val spec = factory.specification()
+        val spec = factory.specification("test-skill")
 
         assertEquals("delegateToSkill", spec.name())
         assertTrue(spec.description().contains("Delegates a request"))
@@ -52,7 +52,7 @@ class DelegateToSkillExecutorFactoryTest {
 
     @Test
     fun `specification includes tool names for skills that have them`() {
-        val spec = factory.specification()
+        val spec = factory.specification("test-skill")
 
         assertTrue(spec.description().contains("DateTimeTool"))
     }

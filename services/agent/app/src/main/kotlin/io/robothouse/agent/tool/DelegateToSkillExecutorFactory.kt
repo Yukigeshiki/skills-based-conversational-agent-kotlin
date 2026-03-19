@@ -45,23 +45,25 @@ class DelegateToSkillExecutorFactory(
     /**
      * Returns the tool specification for `delegateToSkill` with `skillName`
      * and `request` parameters. The description includes the list of available
-     * skills and their tools, so the LLM knows what it can delegate to.
+     * skills (excluding the current skill) and their tools, so the LLM knows
+     * what it can delegate to without attempting self-delegation.
      */
-    fun specification(): ToolSpecification {
-        val skillDescriptions = skillCacheService.findAll().joinToString("\n") { skill ->
-            val tools = if (skill.toolNames.isNotEmpty()) " (tools: ${skill.toolNames.joinToString(", ")})" else ""
-            "- ${skill.name}: ${skill.description}$tools"
-        }
+    fun specification(currentSkillName: String): ToolSpecification {
+        val skillDescriptions = skillCacheService.findAll()
+            .filter { it.name != currentSkillName }
+            .joinToString("\n") { skill ->
+                val tools = if (skill.toolNames.isNotEmpty()) " (tools: ${skill.toolNames.joinToString(", ")})" else ""
+                "- ${skill.name}: ${skill.description}$tools"
+            }
 
         return ToolSpecification.builder()
             .name(TOOL_NAME)
             .description(
-                "Delegates a request to a DIFFERENT skill. Use this only when the current task " +
-                    "requires capabilities from another skill that you do not have. Do NOT delegate " +
-                    "to your own skill. The target skill will execute the request using its own tools " +
-                    "and expertise, and return the result. The skillName must exactly match one of " +
-                    "the available skills listed below.\n\n" +
-                    "Available skills:\n$skillDescriptions"
+                "Delegates a request to a different skill. Use this only when the current task " +
+                "requires capabilities from another skill that you do not have. The target skill " +
+                "will execute the request using its own tools and expertise, and return the result. " +
+                "The skillName must exactly match one of the available skills listed below.\n\n" +
+                "Available skills:\n$skillDescriptions"
             )
             .parameters(
                 JsonObjectSchema.builder()
@@ -102,10 +104,6 @@ class DelegateToSkillExecutorFactory(
                 ?: return@ToolExecutor "Missing required parameter: skillName"
             val delegationRequest = args["request"]
                 ?: return@ToolExecutor "Missing required parameter: request"
-
-            if (skillName == currentSkillName) {
-                return@ToolExecutor "Cannot delegate to yourself ('$skillName'). You already are this skill — handle the request directly."
-            }
 
             val targetSkill = skillService.findByName(skillName)
                 ?: return@ToolExecutor "Skill '$skillName' not found. Available skills can be viewed via the skills API."

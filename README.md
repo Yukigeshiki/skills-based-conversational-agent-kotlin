@@ -114,7 +114,9 @@ All skills use multistep planning — the agent decomposes the request into step
 
 ### Skill-to-Skill Delegation
 
-Every skill automatically has access to a `delegateToSkill` meta-tool that enables runtime delegation to other skills. When the LLM determines that a task requires capabilities from a different skill, it can call `delegateToSkill(skillName, request)` to hand the work off. The target skill executes with its own system prompt, tools, and RAG context, and the result flows back as a tool execution result. A configurable recursion depth limit (default 2) prevents infinite delegation chains.
+During single-step execution, every skill has access to a `delegateToSkill` meta-tool that enables runtime delegation to other skills. When the LLM determines that a task requires capabilities from a different skill, it can call `delegateToSkill(skillName, request)` to hand the work off. The target skill executes with its own system prompt, tools, and RAG context, and the result flows back as a tool execution result. A configurable recursion depth limit (default 2) prevents infinite delegation chains. The current skill is excluded from the available delegation targets to prevent self-delegation.
+
+Delegation is only available in single-step plans. Multistep plans handle cross-skill orchestration via the planner, which assigns each step to the appropriate skill — delegation is not needed and is excluded to prevent duplicate work between parallel steps.
 
 ### Tool Approval (Human-in-the-Loop)
 
