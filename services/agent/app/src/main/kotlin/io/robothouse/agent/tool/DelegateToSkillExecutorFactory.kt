@@ -56,10 +56,11 @@ class DelegateToSkillExecutorFactory(
         return ToolSpecification.builder()
             .name(TOOL_NAME)
             .description(
-                "Delegates a request to another skill. Use this when the current task " +
-                    "requires capabilities from a different skill. The target skill will " +
-                    "execute the request using its own tools and expertise, and return " +
-                    "the result. The skillName must exactly match one of the available skills listed below.\n\n" +
+                "Delegates a request to a DIFFERENT skill. Use this only when the current task " +
+                    "requires capabilities from another skill that you do not have. Do NOT delegate " +
+                    "to your own skill. The target skill will execute the request using its own tools " +
+                    "and expertise, and return the result. The skillName must exactly match one of " +
+                    "the available skills listed below.\n\n" +
                     "Available skills:\n$skillDescriptions"
             )
             .parameters(
@@ -101,6 +102,10 @@ class DelegateToSkillExecutorFactory(
                 ?: return@ToolExecutor "Missing required parameter: skillName"
             val delegationRequest = args["request"]
                 ?: return@ToolExecutor "Missing required parameter: request"
+
+            if (skillName == currentSkillName) {
+                return@ToolExecutor "Cannot delegate to yourself ('$skillName'). You already are this skill — handle the request directly."
+            }
 
             val targetSkill = skillService.findByName(skillName)
                 ?: return@ToolExecutor "Skill '$skillName' not found. Available skills can be viewed via the skills API."
