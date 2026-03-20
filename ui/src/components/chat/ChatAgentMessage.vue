@@ -39,11 +39,20 @@ const isMultiStep = computed(() => {
  * - Single step: show skill_matched at the top, hide per-step skill in plan_created
  * - Multi-step: hide standalone skill_matched, show per-step skills in plan_created
  */
+/** Event types that are infrastructure-only and should not appear in the activity log. */
+const hiddenEventTypes = new Set([
+  'conversation_started',
+  'final_response',
+  'error',
+  'warning',
+  'heartbeat',
+  'approval_resolved',
+])
+
 const displayActivities = computed(() =>
   props.message.activities.filter(
     (a) =>
-      a.type !== 'final_response' &&
-      a.type !== 'error' &&
+      !hiddenEventTypes.has(a.type) &&
       (a.type !== 'skill_matched' || !isMultiStep.value),
   ),
 )

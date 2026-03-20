@@ -68,6 +68,28 @@
           <pre class="mt-1 max-h-48 overflow-y-auto overflow-x-auto rounded bg-muted p-2 text-[11px]">{{ event.result }}</pre>
         </details>
       </template>
+
+      <template v-else-if="event.type === 'skill_handoff_started'">
+        <span>
+          Delegating to
+          <span class="rounded bg-accent px-1.5 py-0.5 font-medium text-accent-foreground">{{ event.toSkill }}</span>
+        </span>
+      </template>
+
+      <template v-else-if="event.type === 'skill_handoff_completed'">
+        <span :class="event.success ? '' : 'text-destructive'">
+          Delegation to
+          <span class="font-medium">{{ event.toSkill }}</span>
+          {{ event.success ? 'completed' : 'failed' }}
+        </span>
+      </template>
+
+      <template v-else-if="event.type === 'approval_required'">
+        <span class="text-yellow-600 dark:text-yellow-400">
+          Approval required for tool execution in
+          <span class="font-medium">{{ event.skillName }}</span>
+        </span>
+      </template>
     </div>
   </div>
 </template>
@@ -87,6 +109,8 @@ import {
   Brain,
   Wrench,
   GitBranch,
+  ArrowRightLeft,
+  ShieldCheck,
 } from 'lucide-vue-next'
 import type { ChatEvent } from '@/types/chat'
 
@@ -103,6 +127,9 @@ const iconMap = {
   thought: Brain,
   tool_call_started: Wrench,
   tool_call_completed: Wrench,
+  skill_handoff_started: ArrowRightLeft,
+  skill_handoff_completed: ArrowRightLeft,
+  approval_required: ShieldCheck,
 } as const
 
 /** Resolves the icon component for the current event type, falling back to {@link Circle}. */
