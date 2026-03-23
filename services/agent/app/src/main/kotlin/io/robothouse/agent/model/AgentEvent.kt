@@ -31,7 +31,8 @@ import java.time.Instant
     JsonSubTypes.Type(value = AgentEvent.ApprovalResolvedEvent::class, name = "approval_resolved"),
     JsonSubTypes.Type(value = AgentEvent.WarningEvent::class, name = "warning"),
     JsonSubTypes.Type(value = AgentEvent.ErrorEvent::class, name = "error"),
-    JsonSubTypes.Type(value = AgentEvent.HeartbeatEvent::class, name = "heartbeat")
+    JsonSubTypes.Type(value = AgentEvent.HeartbeatEvent::class, name = "heartbeat"),
+    JsonSubTypes.Type(value = AgentEvent.ResponseChunkEvent::class, name = "response_chunk")
 )
 sealed class AgentEvent {
     abstract val type: String
@@ -247,6 +248,17 @@ sealed class AgentEvent {
         override val timestamp: Instant = Instant.now()
     ) : AgentEvent() {
         override val type: String = "error"
+    }
+
+    /**
+     * Emitted for each partial text chunk received during streaming LLM
+     * responses, enabling progressive rendering on the client.
+     */
+    data class ResponseChunkEvent(
+        val chunk: String,
+        override val timestamp: Instant = Instant.now()
+    ) : AgentEvent() {
+        override val type: String = "response_chunk"
     }
 
     /**

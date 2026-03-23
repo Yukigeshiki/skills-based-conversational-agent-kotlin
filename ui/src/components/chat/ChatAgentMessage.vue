@@ -4,6 +4,7 @@
       <ChatActivityLog
         :activities="displayActivities"
         :streaming="message.status === 'streaming'"
+        :streaming-text="message.streamingText"
       />
       <ChatErrorMessage v-if="message.error" :error="message.error" />
       <div
@@ -43,6 +44,7 @@ const isMultiStep = computed(() => {
 const hiddenEventTypes = new Set([
   'conversation_started',
   'final_response',
+  'response_chunk',
   'error',
   'warning',
   'heartbeat',

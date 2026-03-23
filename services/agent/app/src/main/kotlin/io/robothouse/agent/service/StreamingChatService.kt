@@ -225,7 +225,9 @@ class StreamingChatService(
                 try {
                     val activities = Collections.synchronizedList(mutableListOf<AgentEvent>())
                     val listener = AgentEventListener { event ->
-                        activities.add(event)
+                        if (event !is AgentEvent.ResponseChunkEvent) {
+                            activities.add(event)
+                        }
                         try {
                             emitter.send(
                                 SseEmitter.event()

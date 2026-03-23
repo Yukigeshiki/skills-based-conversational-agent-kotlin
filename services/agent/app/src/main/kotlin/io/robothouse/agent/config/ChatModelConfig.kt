@@ -1,7 +1,9 @@
 package io.robothouse.agent.config
 
 import dev.langchain4j.model.anthropic.AnthropicChatModel
+import dev.langchain4j.model.anthropic.AnthropicStreamingChatModel
 import dev.langchain4j.model.chat.ChatModel
+import dev.langchain4j.model.chat.StreamingChatModel
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.context.properties.EnableConfigurationProperties
@@ -39,12 +41,28 @@ class ChatModelConfig {
         buildModel(properties, properties.agent)
 
     @Bean
+    @Qualifier("agentStreamingChatModel")
+    fun agentStreamingChatModel(properties: ChatModelProperties): StreamingChatModel =
+        buildStreamingModel(properties, properties.agent)
+
+    @Bean
     @Qualifier("lightChatModel")
     fun lightChatModel(properties: ChatModelProperties): ChatModel =
         buildModel(properties, properties.light)
 
     private fun buildModel(properties: ChatModelProperties, settings: ChatModelProperties.ModelSettings): ChatModel =
         AnthropicChatModel.builder()
+            .apiKey(properties.apiKey)
+            .modelName(settings.modelName)
+            .temperature(settings.temperature)
+            .maxTokens(settings.maxTokens)
+            .timeout(Duration.ofSeconds(properties.timeoutSeconds))
+            .logRequests(properties.logRequests)
+            .logResponses(properties.logResponses)
+            .build()
+
+    private fun buildStreamingModel(properties: ChatModelProperties, settings: ChatModelProperties.ModelSettings): StreamingChatModel =
+        AnthropicStreamingChatModel.builder()
             .apiKey(properties.apiKey)
             .modelName(settings.modelName)
             .temperature(settings.temperature)

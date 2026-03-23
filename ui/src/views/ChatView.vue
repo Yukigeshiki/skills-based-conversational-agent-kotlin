@@ -60,6 +60,8 @@ watch(
   [
     () => messages.value.length,
     () => messages.value[messages.value.length - 1]?.activities.length ?? 0,
+    () => messages.value[messages.value.length - 1]?.content.length ?? 0,
+    () => messages.value[messages.value.length - 1]?.streamingText?.length ?? 0,
   ],
   () => scrollToBottom(),
 )

@@ -7,6 +7,7 @@ import dev.langchain4j.data.message.ChatMessage
 import dev.langchain4j.data.message.SystemMessage
 import dev.langchain4j.data.message.UserMessage
 import dev.langchain4j.model.chat.ChatModel
+import dev.langchain4j.model.chat.StreamingChatModel
 import dev.langchain4j.service.tool.ToolExecutor
 import io.robothouse.agent.config.AgentProperties
 import io.robothouse.agent.entity.Skill
@@ -54,6 +55,7 @@ class DynamicAgentService(
     private val skillService: SkillService,
     private val delegateToSkillExecutorFactory: DelegateToSkillExecutorFactory,
     private val pendingApprovalService: PendingApprovalService,
+    @param:Autowired(required = false) @param:Qualifier("agentStreamingChatModel") private val agentStreamingChatModel: StreamingChatModel? = null,
     @param:Autowired(required = false) private val agentGraphStateSerializer: AgentGraphStateSerializer? = null,
     @param:Autowired(required = false) @param:Qualifier("agentCheckpointSaver") private val checkpointSaver: PostgresCheckpointSaver? = null
 ) {
@@ -474,6 +476,7 @@ class DynamicAgentService(
 
         val ctx = AgentGraphContext(
             agentChatModel = agentChatModel,
+            agentStreamingChatModel = if (emitFinalResponse) agentStreamingChatModel else null,
             systemPrompt = systemPrompt,
             skillName = skillName,
             specifications = allSpecifications,
@@ -642,6 +645,7 @@ class DynamicAgentService(
 
         val ctx = AgentGraphContext(
             agentChatModel = agentChatModel,
+            agentStreamingChatModel = agentStreamingChatModel,
             systemPrompt = systemPrompt,
             skillName = skill.name,
             specifications = allSpecifications,

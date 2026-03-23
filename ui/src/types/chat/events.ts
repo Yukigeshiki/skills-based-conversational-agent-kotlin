@@ -151,6 +151,12 @@ export interface ErrorEvent {
   timestamp: string
 }
 
+export interface ResponseChunkEvent {
+  type: 'response_chunk'
+  chunk: string
+  timestamp: string
+}
+
 export type ChatEvent =
   | ConversationStartedEvent
   | SkillMatchedEvent
@@ -169,3 +175,4 @@ export type ChatEvent =
   | ApprovalResolvedEvent
   | WarningEvent
   | ErrorEvent
+  | ResponseChunkEvent

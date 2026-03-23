@@ -5,6 +5,8 @@ import dev.langchain4j.data.message.AiMessage
 import dev.langchain4j.data.message.SystemMessage
 import dev.langchain4j.data.message.ToolExecutionResultMessage
 import dev.langchain4j.model.chat.request.ChatRequest
+import dev.langchain4j.model.chat.response.ChatResponse
+import dev.langchain4j.model.chat.response.StreamingChatResponseHandler
 import io.robothouse.agent.graph.agent.AgentGraphState.Companion.DONE
 import io.robothouse.agent.graph.agent.AgentGraphState.Companion.ITERATION
 import io.robothouse.agent.graph.agent.AgentGraphState.Companion.MESSAGES
@@ -22,6 +24,10 @@ import org.bsc.langgraph4j.GraphDefinition.START
 import org.bsc.langgraph4j.StateGraph
 import org.bsc.langgraph4j.action.AsyncEdgeAction.edge_async
 import org.bsc.langgraph4j.action.AsyncNodeAction.node_async
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Builds and compiles a LangGraph4j StateGraph that implements the agent
@@ -126,7 +132,12 @@ object AgentGraphBuilder {
             requestBuilder.toolSpecifications(ctx.specifications)
         }
 
-        val response = ctx.agentChatModel.chat(requestBuilder.build())
+        val chatRequest = requestBuilder.build()
+        val response = if (ctx.agentStreamingChatModel != null) {
+            streamAndBlock(chatRequest, ctx)
+        } else {
+            ctx.agentChatModel.chat(chatRequest)
+        }
         val aiMessage = response.aiMessage()
         messages.add(aiMessage)
 
@@ -200,5 +211,47 @@ object AgentGraphBuilder {
             STEPS to newSteps,
             ITERATION to iteration + 1
         )
+    }
+
+    /**
+     * Calls the streaming chat model and blocks until the full response is
+     * received. Emits [AgentEvent.ResponseChunkEvent] for each partial text
+     * chunk as it arrives from the model, enabling progressive rendering.
+     */
+    private fun streamAndBlock(
+        request: ChatRequest,
+        ctx: AgentGraphContext
+    ): ChatResponse {
+        val latch = CountDownLatch(1)
+        val responseRef = AtomicReference<ChatResponse>()
+        val errorRef = AtomicReference<Throwable>()
+
+        ctx.agentStreamingChatModel!!.chat(request, object : StreamingChatResponseHandler {
+            override fun onPartialResponse(partialResponse: String) {
+                ctx.emitEvent(ctx.listener) {
+                    AgentEvent.ResponseChunkEvent(chunk = partialResponse)
+                }
+            }
+
+            override fun onCompleteResponse(completeResponse: ChatResponse) {
+                responseRef.set(completeResponse)
+                latch.countDown()
+            }
+
+            override fun onError(error: Throwable) {
+                errorRef.set(error)
+                latch.countDown()
+            }
+        })
+
+        val elapsedMs = System.currentTimeMillis() - ctx.startTime
+        val remainingMs = ctx.timeoutMillis - elapsedMs
+        if (remainingMs <= 0 || !latch.await(remainingMs, TimeUnit.MILLISECONDS)) {
+            throw TimeoutException("Streaming LLM call timed out")
+        }
+        errorRef.get()?.let {
+            throw it as? RuntimeException ?: RuntimeException("Streaming LLM call failed", it)
+        }
+        return responseRef.get()
     }
 }

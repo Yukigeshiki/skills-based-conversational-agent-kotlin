@@ -13,6 +13,7 @@ export interface ChatMessage {
   activities: ChatEvent[]
   status: MessageStatus
   error?: string
+  streamingText?: string
 }
 
 /** A message as returned by the conversation history REST endpoint. */

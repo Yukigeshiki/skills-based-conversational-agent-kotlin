@@ -3,6 +3,7 @@ package io.robothouse.agent.graph.agent
 import dev.langchain4j.agent.tool.ToolExecutionRequest
 import dev.langchain4j.agent.tool.ToolSpecification
 import dev.langchain4j.model.chat.ChatModel
+import dev.langchain4j.model.chat.StreamingChatModel
 import dev.langchain4j.service.tool.ToolExecutor
 import io.robothouse.agent.listener.AgentEventListener
 import io.robothouse.agent.model.AgentEvent
@@ -23,6 +24,7 @@ typealias CheckTimeoutFn = (Long, Long) -> Unit
  */
 data class AgentGraphContext(
     val agentChatModel: ChatModel,
+    val agentStreamingChatModel: StreamingChatModel? = null,
     val systemPrompt: String,
     val skillName: String,
     val specifications: List<ToolSpecification>,

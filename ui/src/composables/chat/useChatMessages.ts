@@ -17,6 +17,39 @@ export function useChatMessages() {
 
   const messages = ref<ChatMessage[]>([])
 
+  // Buffer for accumulating streaming chunks before flushing to reactive state.
+  // Flushed on requestAnimationFrame to avoid per-token markdown re-parsing.
+  let chunkBuffer = ''
+  let chunkTargetId: string | null = null
+  let chunkFlushHandle: number | null = null
+
+  function flushChunkBuffer(): void {
+    chunkFlushHandle = null
+    if (!chunkTargetId || !chunkBuffer) return
+
+    const idx = messages.value.findIndex((m) => m.id === chunkTargetId)
+    if (idx === -1) {
+      chunkBuffer = ''
+      chunkTargetId = null
+      return
+    }
+
+    const msg = messages.value[idx]!
+    const newMessages = [...messages.value]
+    newMessages[idx] = { ...msg, streamingText: (msg.streamingText ?? '') + chunkBuffer }
+    messages.value = newMessages
+    chunkBuffer = ''
+  }
+
+  function resetChunkBuffer(): void {
+    chunkBuffer = ''
+    chunkTargetId = null
+    if (chunkFlushHandle !== null) {
+      cancelAnimationFrame(chunkFlushHandle)
+      chunkFlushHandle = null
+    }
+  }
+
   /**
    * Appends a completed user message to the list.
    *
@@ -56,14 +89,35 @@ export function useChatMessages() {
     if (idx === -1) return
 
     const msg = messages.value[idx]!
+
+    // Streaming chunks buffer and flush on requestAnimationFrame to avoid per-token re-renders
+    if (event.type === 'response_chunk') {
+      chunkBuffer += event.chunk
+      chunkTargetId = messageId
+      if (chunkFlushHandle === null) {
+        chunkFlushHandle = requestAnimationFrame(flushChunkBuffer)
+      }
+      return
+    }
+
     const updated: ChatMessage = { ...msg, activities: [...msg.activities, event] }
 
     if (event.type === 'final_response') {
+      resetChunkBuffer()
       updated.content = event.response
+      updated.streamingText = undefined
       updated.status = 'complete'
     } else if (event.type === 'error') {
+      resetChunkBuffer()
+      updated.streamingText = undefined
       updated.error = event.message
       updated.status = 'error'
+    } else if (event.type === 'thought') {
+      resetChunkBuffer()
+      updated.streamingText = undefined
+    } else if (event.type === 'skill_rerouted') {
+      resetChunkBuffer()
+      updated.streamingText = undefined
     }
 
     const newMessages = [...messages.value]
