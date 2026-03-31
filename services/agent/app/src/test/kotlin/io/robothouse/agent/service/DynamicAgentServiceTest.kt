@@ -58,10 +58,10 @@ class DynamicAgentServiceTest {
     @BeforeEach
     fun setUp() {
         whenever(taskPlanningService.createPlan(any(), any())).thenReturn(singleStepPlan)
-        whenever(delegateToSkillExecutorFactory.specification(any())).thenReturn(
+        whenever(delegateToSkillExecutorFactory.specification(any(), any())).thenReturn(
             ToolSpecification.builder().name("delegateToSkill").description("Delegates to another skill").build()
         )
-        whenever(delegateToSkillExecutorFactory.createExecutor(any(), any(), any(), any(), anyOrNull(), any())).thenReturn(
+        whenever(delegateToSkillExecutorFactory.createExecutor(any(), any(), any(), any(), any(), anyOrNull(), any())).thenReturn(
             ToolExecutor { _, _ -> "delegation not expected in this test" }
         )
     }

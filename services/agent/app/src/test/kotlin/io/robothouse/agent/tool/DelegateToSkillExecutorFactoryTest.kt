@@ -65,7 +65,7 @@ class DelegateToSkillExecutorFactoryTest {
             currentSkillName = "test-skill",
             listener = AgentEventListener.NOOP,
             conversationId = null,
-            delegateFn = { _, _, _, _, _ -> throw AssertionError("Should not be called") }
+            delegateFn = { _, _, _, _, _, _ -> throw AssertionError("Should not be called") }
         )
 
         val request = ToolExecutionRequest.builder()
@@ -89,7 +89,7 @@ class DelegateToSkillExecutorFactoryTest {
             currentSkillName = "test-skill",
             listener = AgentEventListener.NOOP,
             conversationId = null,
-            delegateFn = { _, _, _, _, _ -> throw AssertionError("Should not be called") }
+            delegateFn = { _, _, _, _, _, _ -> throw AssertionError("Should not be called") }
         )
 
         val request = ToolExecutionRequest.builder()
@@ -111,7 +111,7 @@ class DelegateToSkillExecutorFactoryTest {
             currentSkillName = "test-skill",
             listener = AgentEventListener.NOOP,
             conversationId = null,
-            delegateFn = { _, _, _, _, _ -> throw AssertionError("Should not be called") }
+            delegateFn = { _, _, _, _, _, _ -> throw AssertionError("Should not be called") }
         )
 
         val request = ToolExecutionRequest.builder()
@@ -134,7 +134,7 @@ class DelegateToSkillExecutorFactoryTest {
             currentSkillName = "test-skill",
             listener = AgentEventListener.NOOP,
             conversationId = "conv-123",
-            delegateFn = { skill, req, depth, _, _ ->
+            delegateFn = { skill, req, depth, _, _, _ ->
                 assertEquals("time-skill", skill.name)
                 assertEquals("What time is it?", req)
                 assertEquals(1, depth)
@@ -165,7 +165,7 @@ class DelegateToSkillExecutorFactoryTest {
             currentSkillName = "test-skill",
             listener = listener,
             conversationId = null,
-            delegateFn = { _, _, _, _, _ -> AgentResponse(response = "Done") }
+            delegateFn = { _, _, _, _, _, _ -> AgentResponse(response = "Done") }
         )
 
         val request = ToolExecutionRequest.builder()
@@ -202,7 +202,7 @@ class DelegateToSkillExecutorFactoryTest {
             currentSkillName = "test-skill",
             listener = listener,
             conversationId = null,
-            delegateFn = { _, _, _, _, _ -> throw RuntimeException("LLM unavailable") }
+            delegateFn = { _, _, _, _, _, _ -> throw RuntimeException("LLM unavailable") }
         )
 
         val request = ToolExecutionRequest.builder()
@@ -228,7 +228,7 @@ class DelegateToSkillExecutorFactoryTest {
             currentSkillName = "test-skill",
             listener = AgentEventListener.NOOP,
             conversationId = null,
-            delegateFn = { _, _, _, _, _ -> throw AssertionError("Should not be called") }
+            delegateFn = { _, _, _, _, _, _ -> throw AssertionError("Should not be called") }
         )
 
         val request = ToolExecutionRequest.builder()
@@ -239,5 +239,21 @@ class DelegateToSkillExecutorFactoryTest {
         val result = executor.execute(request, null)
 
         assertTrue(result.contains("Missing required parameter: skillName"))
+    }
+
+    @Test
+    fun `specification excludes skills already in delegation chain`() {
+        val spec = factory.specification("test-skill", delegationChain = setOf("time-skill"))
+
+        assertTrue(spec.description().contains("general-assistant"))
+        assertFalse(spec.description().contains("time-skill"))
+    }
+
+    @Test
+    fun `specification excludes both current skill and chain skills`() {
+        val spec = factory.specification("general-assistant", delegationChain = setOf("time-skill"))
+
+        assertFalse(spec.description().contains("general-assistant"))
+        assertFalse(spec.description().contains("time-skill"))
     }
 }

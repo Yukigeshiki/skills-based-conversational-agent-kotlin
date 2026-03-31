@@ -17,14 +17,20 @@ import org.springframework.stereotype.Component
 /**
  * Delegation function signature for executing a request against a target skill.
  * Accepts the target skill, the request text, the current delegation depth,
- * an event listener, and an optional conversation ID.
+ * the set of skills already visited in the delegation chain, an event listener,
+ * and an optional conversation ID.
  */
-typealias DelegateFn = (Skill, String, Int, AgentEventListener, String?) -> AgentResponse
+typealias DelegateFn = (Skill, String, Int, Set<String>, AgentEventListener, String?) -> AgentResponse
 
 /**
  * Factory for the `delegateToSkill` meta-tool that enables skill-to-skill
  * handoff at runtime. Creates a [ToolSpecification] and depth-aware
  * [ToolExecutor] for each agent loop invocation.
+ *
+ * Circular delegation is prevented by tracking visited skills through the
+ * delegation chain. Each level adds its skill name to the chain, and the
+ * [specification] method filters out all visited skills so the LLM never
+ * sees an option to delegate back to a skill already in the call stack.
  *
  * This component is not annotated with `@Tool` and is invisible to
  * [io.robothouse.agent.repository.ToolRepository]. The meta-tool is
@@ -45,12 +51,13 @@ class DelegateToSkillExecutorFactory(
     /**
      * Returns the tool specification for `delegateToSkill` with `skillName`
      * and `request` parameters. The description includes the list of available
-     * skills (excluding the current skill) and their tools, so the LLM knows
-     * what it can delegate to without attempting self-delegation.
+     * skills (excluding the current skill and any skills already visited in
+     * the delegation chain), so the LLM knows what it can delegate to without
+     * attempting self-delegation or circular delegation.
      */
-    fun specification(currentSkillName: String): ToolSpecification {
+    fun specification(currentSkillName: String, delegationChain: Set<String> = emptySet()): ToolSpecification {
         val skillDescriptions = skillCacheService.findAll()
-            .filter { it.name != currentSkillName }
+            .filter { it.name != currentSkillName && it.name !in delegationChain }
             .joinToString("\n") { skill ->
                 val tools = if (skill.toolNames.isNotEmpty()) " (tools: ${skill.toolNames.joinToString(", ")})" else ""
                 "- ${skill.name}: ${skill.description}$tools"
@@ -78,13 +85,15 @@ class DelegateToSkillExecutorFactory(
     /**
      * Creates a depth-aware [ToolExecutor] for `delegateToSkill`. When invoked,
      * the executor resolves the target skill, emits handoff events, and calls
-     * the [delegateFn] to execute a nested agent loop. Returns an error string
+     * the [delegateFn] to execute a nested agent loop. The delegation chain
+     * is passed through to prevent circular delegation. Returns an error string
      * if the depth limit is exceeded or the target skill is not found.
      */
     fun createExecutor(
         currentDepth: Int,
         maxDepth: Int,
         currentSkillName: String,
+        delegationChain: Set<String> = emptySet(),
         listener: AgentEventListener,
         conversationId: String?,
         delegateFn: DelegateFn
@@ -108,7 +117,9 @@ class DelegateToSkillExecutorFactory(
             val targetSkill = skillService.findByName(skillName)
                 ?: return@ToolExecutor "Skill '$skillName' not found. Available skills can be viewed via the skills API."
 
-            log.info { "Skill handoff: $currentSkillName -> $skillName (depth=$currentDepth)" }
+            val updatedChain = delegationChain + currentSkillName
+
+            log.info { "Skill handoff: $currentSkillName -> $skillName (depth=$currentDepth, chain=$updatedChain)" }
             listener.onEvent(
                 AgentEvent.SkillHandoffStartedEvent(
                     fromSkill = currentSkillName,
@@ -119,7 +130,7 @@ class DelegateToSkillExecutorFactory(
             )
 
             try {
-                val response = delegateFn(targetSkill, delegationRequest, currentDepth + 1, listener, conversationId)
+                val response = delegateFn(targetSkill, delegationRequest, currentDepth + 1, updatedChain, listener, conversationId)
                 listener.onEvent(
                     AgentEvent.SkillHandoffCompletedEvent(
                         fromSkill = currentSkillName,

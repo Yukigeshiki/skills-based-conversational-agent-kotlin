@@ -440,6 +440,7 @@ class DynamicAgentService(
         conversationHistory: List<ConversationMessage> = emptyList(),
         conversationId: String? = null,
         delegationDepth: Int = 0,
+        delegationChain: Set<String> = emptySet(),
         requiresApproval: Boolean = false,
         includeDelegation: Boolean = true
     ): AgentResponse {
@@ -461,11 +462,12 @@ class DynamicAgentService(
                 currentDepth = delegationDepth,
                 maxDepth = agentProperties.maxDelegationDepth,
                 currentSkillName = skillName,
+                delegationChain = delegationChain,
                 listener = listener,
                 conversationId = conversationId,
                 delegateFn = ::executeStepForDelegation
             )
-            allSpecifications = specifications + delegateToSkillExecutorFactory.specification(skillName)
+            allSpecifications = specifications + delegateToSkillExecutorFactory.specification(skillName, delegationChain)
             allExecutors = executors + (DelegateToSkillExecutorFactory.TOOL_NAME to delegateExecutor)
         } else {
             allSpecifications = specifications
@@ -588,6 +590,7 @@ class DynamicAgentService(
         skill: Skill,
         request: String,
         delegationDepth: Int,
+        delegationChain: Set<String>,
         listener: AgentEventListener,
         conversationId: String?
     ): AgentResponse {
@@ -607,7 +610,8 @@ class DynamicAgentService(
             listener = listener,
             emitFinalResponse = false,
             conversationId = conversationId,
-            delegationDepth = delegationDepth
+            delegationDepth = delegationDepth,
+            delegationChain = delegationChain
         )
     }
 
