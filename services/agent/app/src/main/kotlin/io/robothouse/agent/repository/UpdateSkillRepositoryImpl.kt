@@ -9,6 +9,11 @@ import java.util.UUID
 /**
  * Implementation of [UpdateSkillRepository] that builds dynamic JPQL
  * update queries from non-null request fields using parameterized queries.
+ *
+ * Clearable fields (nullable strings, lists) use three-way semantics:
+ * - `null` in the request means the field was not sent (skip)
+ * - blank/empty means the field should be cleared
+ * - non-blank/non-empty means the field should be set to the value
  */
 @Repository
 class UpdateSkillRepositoryImpl(
@@ -31,14 +36,19 @@ class UpdateSkillRepositoryImpl(
             setClauses.add("s.systemPrompt = :systemPrompt")
             params["systemPrompt"] = it
         }
-        request.responseTemplate?.let {
+
+        // responseTemplate is nullable in the entity — blank clears it to null
+        if (request.responseTemplate != null) {
             setClauses.add("s.responseTemplate = :responseTemplate")
-            params["responseTemplate"] = it
+            params["responseTemplate"] = request.responseTemplate.ifBlank { null }
         }
-        request.toolNames?.let {
+
+        // toolNames is a list — empty list clears it
+        if (request.toolNames != null) {
             setClauses.add("s.toolNames = :toolNames")
-            params["toolNames"] = it
+            params["toolNames"] = request.toolNames
         }
+
         request.requiresApproval?.let {
             setClauses.add("s.requiresApproval = :requiresApproval")
             params["requiresApproval"] = it

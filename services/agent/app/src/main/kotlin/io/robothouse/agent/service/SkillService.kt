@@ -7,6 +7,7 @@ import dev.langchain4j.store.embedding.EmbeddingStore
 import dev.langchain4j.store.embedding.filter.MetadataFilterBuilder.metadataKey
 import io.robothouse.agent.entity.Skill
 import io.robothouse.agent.exception.BadRequestException
+import io.robothouse.agent.exception.ConflictException
 import io.robothouse.agent.exception.NotFoundException
 import io.robothouse.agent.model.CreateSkillRequest
 import io.robothouse.agent.model.UpdateSkillRequest
@@ -77,7 +78,7 @@ class SkillService(
 
         val saved = transactionTemplate.execute {
             if (skillRepository.findByName(request.name) != null) {
-                throw BadRequestException("A skill with name '${request.name}' already exists")
+                throw ConflictException("A skill with name '${request.name}' already exists")
             }
 
             val skill = Skill(
@@ -90,10 +91,10 @@ class SkillService(
             )
             val persisted = skillRepository.save(skill)
             embedSkill(persisted)
+            skillCacheService.invalidate()
             persisted
         }!!
 
-        skillCacheService.invalidate()
         log.info { "Created skill: id=${saved.id}, name=${saved.name}" }
         return saved
     }
@@ -131,10 +132,10 @@ class SkillService(
                 embedSkill(persisted)
             }
 
+            skillCacheService.invalidate()
             persisted
         }!!
 
-        skillCacheService.invalidate()
         log.info { "Updated skill: id=${saved.id}, name=${saved.name}" }
         return saved
     }
@@ -159,9 +160,9 @@ class SkillService(
 
             removeEmbeddingsBySkillId(id.toString())
             skillRepository.deleteById(id)
+            skillCacheService.invalidate()
         }
 
-        skillCacheService.invalidate()
         log.info { "Deleted skill: id=$id" }
     }
 

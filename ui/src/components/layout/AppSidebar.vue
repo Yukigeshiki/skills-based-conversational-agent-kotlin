@@ -53,6 +53,7 @@ import {
   ChevronLeft,
   ChevronRight,
   MessageSquare,
+  Plug,
   Wrench,
 } from 'lucide-vue-next'
 
@@ -79,6 +80,11 @@ const navItems: NavItem[] = [
     path: '/skills',
     label: 'Skills',
     icon: Wrench,
+  },
+  {
+    path: '/http-tools',
+    label: 'HTTP Tools',
+    icon: Plug,
   },
 ]
 

@@ -48,6 +48,9 @@ dependencies {
     // Caching
     implementation(libs.caffeine)
 
+    // Resilience
+    implementation(libs.failsafe)
+
     // Redis
     implementation(libs.spring.boot.starter.data.redis)
 

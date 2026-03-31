@@ -18,6 +18,11 @@ const router = createRouter({
       name: 'skills',
       component: () => import('@/views/SkillsView.vue'),
     },
+    {
+      path: '/http-tools',
+      name: 'http-tools',
+      component: () => import('@/views/HttpToolsView.vue'),
+    },
   ],
 })
 

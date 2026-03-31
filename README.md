@@ -12,7 +12,7 @@ A conversational agent built with Kotlin and Spring Boot. User messages are rout
 2. **Planning** — the agent decomposes the request into execution steps with declared dependencies; independent steps run in parallel on virtual threads, dependent steps wait for their prerequisites; each step can target a different skill for multi-skill workflows
 3. **Agent loop** — Claude reasons, calls tools, observes results, and repeats until done; skills can delegate to other skills at runtime via the `delegateToSkill` meta-tool; skills with `requiresApproval` pause before tool execution for human review
 4. **Validation** — specialist skill responses are validated; inadequate ones are rerouted to the general-assistant fallback
-5. **Streaming** — SSE events stream back throughout (skill matched, thoughts, tool calls, plan steps, response)
+5. **Streaming** — SSE events stream back throughout (skill matched, thoughts, tool calls, plan steps, response chunks); the LLM response streams token-by-token as a thought preview in the activity log, then renders as complete markdown once confirmed
 6. **Memory** — Redis-backed conversation history (50 messages, 24h TTL) enables multi-turn context
 
 ## Prerequisites
@@ -67,7 +67,7 @@ pnpm install
 pnpm dev  # port 5173
 ```
 
-The UI provides a chat interface and a skills management page for creating, updating, and deleting skills and their reference documents.
+The UI provides a chat interface, a skills management page, and an HTTP tools management page.
 
 ## Graph Architecture
 
@@ -110,7 +110,7 @@ Skills define how the agent handles different types of requests. Each skill has 
 
 A `general-assistant` skill is seeded on first startup and is protected (non-deletable and immutable). To create additional skills, use the skills management page in the UI or the REST API. System prompts should be written in markdown.
 
-All skills use multistep planning — the agent decomposes the request into steps, and each step can target a different skill for multi-skill workflows. Simple requests produce single-step plans and skip per-step overhead. If a step fails, remaining steps are short-circuited.
+All queries use multistep planning — the agent decomposes the request into steps, and each step can target a different skill for multi-skill workflows. Simple requests produce single-step plans and skip per-step overhead. If a step fails, remaining steps are short-circuited.
 
 ### Skill-to-Skill Delegation
 
@@ -144,9 +144,17 @@ Messages are routed through a cascade of strategies:
 
 ## Tools
 
+### Bean Tools
+
 An example tool (`DateTimeTool`) is included. To add more tools, create a Spring `@Component` in the tool directory, with methods annotated with LangChain4j's `@Tool`, then reference the class name in a skill's `toolNames`.
 
 A built-in `delegateToSkill` meta-tool is automatically available to all skills (it does not need to be added to `toolNames`). It enables skill-to-skill handoff at runtime — see [Skill-to-Skill Delegation](#skill-to-skill-delegation).
+
+### HTTP Tools
+
+HTTP tools let users define tools backed by external HTTP endpoints — without writing code or redeploying. Each tool specifies an endpoint URL, HTTP method, headers (with `{{ENV_VAR}}` placeholder support for secrets), typed parameters, a timeout, and a max response length. HTTP tools are created and managed via the UI's HTTP Tools page or the REST API. They appear alongside bean tools in the tool selector and can be assigned to skills.
+
+HTTP calls are protected by Failsafe resilience policies (retry, circuit breaker, rate limiter, bulkhead) and SSRF validation that blocks private networks, loopback addresses, cloud metadata endpoints, CGNAT, and other reserved IP ranges. Tool names must be camelCase alphanumeric (e.g. `weatherLookup`) to remain compatible with skill `toolNames` validation.
 
 ## API
 
@@ -211,7 +219,21 @@ curl -X DELETE http://localhost:9090/api/skills/{skillId}/references/{id}     # 
 ### Tools
 
 ```bash
-curl http://localhost:9090/api/tools                     # List registered tool names
+curl http://localhost:9090/api/tools                     # List all registered tool names (bean + HTTP)
+```
+
+### HTTP Tools CRUD
+
+```bash
+curl http://localhost:9090/api/http-tools                    # List
+curl -X POST http://localhost:9090/api/http-tools \          # Create
+  -H 'Content-Type: application/json' \
+  -d '{"name": "weatherLookup", "description": "Gets current weather", "endpointUrl": "https://api.example.com/weather", "httpMethod": "GET", "headers": {}, "parameters": [{"name": "city", "type": "string", "description": "City name", "required": true}], "timeoutSeconds": 30, "maxResponseLength": 8000}'
+curl -X PATCH http://localhost:9090/api/http-tools/{id} ...  # Update
+curl -X DELETE http://localhost:9090/api/http-tools/{id}     # Delete
+curl -X POST http://localhost:9090/api/http-tools/{id}/test \  # Test
+  -H 'Content-Type: application/json' \
+  -d '{"arguments": {"city": "London"}}'
 ```
 
 ## Project Structure

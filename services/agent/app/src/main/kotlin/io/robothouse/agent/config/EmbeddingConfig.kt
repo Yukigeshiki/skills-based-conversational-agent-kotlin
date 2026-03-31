@@ -23,10 +23,13 @@ class EmbeddingConfig {
     }
 
     @Bean
-    fun embeddingModel(@Value("\${openai.api-key}") apiKey: String): EmbeddingModel =
+    fun embeddingModel(
+        @Value("\${openai.api-key}") apiKey: String,
+        @Value("\${openai.embedding-model}") modelName: String
+    ): EmbeddingModel =
         OpenAiEmbeddingModel.builder()
             .apiKey(apiKey)
-            .modelName("text-embedding-3-small")
+            .modelName(modelName)
             .build()
 
     @Bean

@@ -13,7 +13,9 @@ import jakarta.persistence.Converter
 @Converter
 class PendingToolCallListConverter : AttributeConverter<List<PendingToolCall>, String> {
 
-    private val objectMapper = jacksonObjectMapper()
+    companion object {
+        private val objectMapper = jacksonObjectMapper()
+    }
 
     override fun convertToDatabaseColumn(attribute: List<PendingToolCall>?): String {
         return objectMapper.writeValueAsString(attribute ?: emptyList<PendingToolCall>())

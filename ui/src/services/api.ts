@@ -1,9 +1,42 @@
-/** Shared Axios client and SSE helper for communicating with the agent backend. */
+/**
+ * Shared Axios client for communicating with the agent backend.
+ *
+ * Transforms undefined values to null for proper JSON serialization so the
+ * backend can distinguish "field not provided" from "field should be cleared".
+ */
 import axios from 'axios'
 
 const API_TIMEOUT = 30000
 
 const API_URL = import.meta.env.VITE_AGENT_SERVICE_URL || 'http://localhost:9090'
+
+/**
+ * Recursively transforms undefined values to null in an object.
+ *
+ * JavaScript/Vue idiomatically uses undefined for "no value", but JSON.stringify
+ * strips undefined values entirely. The backend needs explicit null to know when
+ * a field should be cleared.
+ */
+function transformUndefinedToNull<T>(obj: T): T {
+  if (obj === undefined) {
+    return null as T
+  }
+
+  if (obj === null || typeof obj !== 'object') {
+    return obj
+  }
+
+  if (Array.isArray(obj)) {
+    return obj.map(item => transformUndefinedToNull(item)) as T
+  }
+
+  const result: Record<string, unknown> = {}
+  for (const key of Object.keys(obj)) {
+    const value = (obj as Record<string, unknown>)[key]
+    result[key] = value === undefined ? null : transformUndefinedToNull(value)
+  }
+  return result as T
+}
 
 export const apiClient = axios.create({
   baseURL: API_URL,
@@ -13,23 +46,15 @@ export const apiClient = axios.create({
   },
 })
 
-/**
- * Opens a native EventSource connection to the given backend path.
- *
- * @param path - API path to connect to (appended to the base URL).
- * @param options - Optional callbacks for open, message, and error events.
- * @returns The EventSource instance for the caller to close when done.
- */
-export function createSSEConnection(path: string, options?: { onMessage?: (data: string) => void; onError?: (err: Event) => void; onOpen?: () => void }) {
-  const url = `${API_URL}${path}`
-  const eventSource = new EventSource(url)
-
-  if (options?.onOpen) eventSource.onopen = options.onOpen
-  if (options?.onMessage) eventSource.onmessage = (event) => options.onMessage!(event.data)
-  if (options?.onError) eventSource.onerror = options.onError
-
-  return eventSource
-}
+apiClient.interceptors.request.use(
+  (config) => {
+    if (config.data && typeof config.data === 'object' && !(config.data instanceof FormData)) {
+      config.data = transformUndefinedToNull(config.data)
+    }
+    return config
+  },
+  (error) => Promise.reject(error),
+)
 
 apiClient.interceptors.response.use(
   (response) => response,

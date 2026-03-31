@@ -100,7 +100,7 @@ watch(open, async (isOpen) => {
   } finally {
     loading.value = false
   }
-})
+}, { immediate: true })
 
 function handleSubmit() {
   if (!isFormValid.value) {
@@ -113,7 +113,7 @@ function handleSubmit() {
     name: form.value.name,
     description: form.value.description,
     systemPrompt: form.value.systemPrompt,
-    responseTemplate: form.value.responseTemplate.trim() || undefined,
+    responseTemplate: form.value.responseTemplate.trim(),
     toolNames: [...form.value.toolNames],
     requiresApproval: form.value.requiresApproval,
   }

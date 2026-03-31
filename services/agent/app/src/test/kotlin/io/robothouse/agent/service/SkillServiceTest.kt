@@ -7,6 +7,7 @@ import dev.langchain4j.model.output.Response
 import dev.langchain4j.store.embedding.EmbeddingStore
 import io.robothouse.agent.entity.Skill
 import io.robothouse.agent.exception.BadRequestException
+import io.robothouse.agent.exception.ConflictException
 import io.robothouse.agent.exception.NotFoundException
 import io.robothouse.agent.model.CreateSkillRequest
 import io.robothouse.agent.model.UpdateSkillRequest
@@ -180,7 +181,7 @@ class SkillServiceTest {
     }
 
     @Test
-    fun `create throws BadRequestException when name already exists`() {
+    fun `create throws ConflictException when name already exists`() {
         val request = CreateSkillRequest(
             name = "test-skill",
             description = "A new skill",
@@ -190,7 +191,7 @@ class SkillServiceTest {
 
         whenever(skillRepository.findByName("test-skill")).thenReturn(skill)
 
-        assertThrows<BadRequestException> {
+        assertThrows<ConflictException> {
             service.create(request)
         }
 
