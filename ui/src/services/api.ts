@@ -1,6 +1,8 @@
 /**
  * Shared Axios client for communicating with the agent backend.
  *
+ * Uses the fetch adapter for native browser fetch support.
+ * Sends a Request-ID header for end-to-end request tracing.
  * Transforms undefined values to null for proper JSON serialization so the
  * backend can distinguish "field not provided" from "field should be cleared".
  */
@@ -41,6 +43,7 @@ function transformUndefinedToNull<T>(obj: T): T {
 export const apiClient = axios.create({
   baseURL: API_URL,
   timeout: API_TIMEOUT,
+  adapter: 'fetch',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -48,9 +51,16 @@ export const apiClient = axios.create({
 
 apiClient.interceptors.request.use(
   (config) => {
-    if (config.data && typeof config.data === 'object' && !(config.data instanceof FormData)) {
+    if (!config.headers['Request-ID']) {
+      config.headers['Request-ID'] = crypto.randomUUID()
+    }
+
+    if (config.data instanceof FormData) {
+      delete config.headers['Content-Type']
+    } else if (config.data && typeof config.data === 'object') {
       config.data = transformUndefinedToNull(config.data)
     }
+
     return config
   },
   (error) => Promise.reject(error),

@@ -14,6 +14,7 @@ import io.robothouse.agent.model.AgentEvent
 import io.robothouse.agent.model.ApprovalDecision
 import io.robothouse.agent.model.ConversationMessage
 import io.robothouse.agent.util.log
+import org.slf4j.MDC
 import org.bsc.langgraph4j.RunnableConfig
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.beans.factory.annotation.Qualifier
@@ -239,56 +240,66 @@ class StreamingChatService(
         emitter.onTimeout { log.warn { "SSE emitter timed out" } }
         emitter.onError { ex -> log.warn { "SSE emitter error: ${ex.message}" } }
 
+        // Capture MDC context from the servlet thread to propagate to the virtual thread
+        val mdcContext = MDC.getCopyOfContextMap() ?: emptyMap()
+
         Thread.ofVirtual()
             .uncaughtExceptionHandler { _, ex -> log.error(ex) { "Uncaught exception on SSE virtual thread" } }
             .start {
-                val heartbeat = heartbeatScheduler.scheduleAtFixedRate({
-                    try {
-                        emitter.send(
-                            SseEmitter.event()
-                                .name("heartbeat")
-                                .data(objectMapper.writeValueAsString(AgentEvent.HeartbeatEvent()))
-                        )
-                    } catch (_: Exception) {
-                        // Emitter already closed — heartbeat will be cancelled shortly
-                    }
-                }, HEARTBEAT_INTERVAL_SECONDS, HEARTBEAT_INTERVAL_SECONDS, TimeUnit.SECONDS)
-
+                MDC.setContextMap(mdcContext)
                 try {
-                    val activities = Collections.synchronizedList(mutableListOf<AgentEvent>())
-                    val listener = AgentEventListener { event ->
-                        if (event !is AgentEvent.ResponseChunkEvent) {
-                            activities.add(event)
-                        }
+                    // Note: the heartbeat thread does not inherit MDC context — it only
+                    // sends SSE keep-alive events and does not log, so this is acceptable.
+                    val heartbeat = heartbeatScheduler.scheduleAtFixedRate({
                         try {
                             emitter.send(
                                 SseEmitter.event()
-                                    .name(event.type)
-                                    .data(objectMapper.writeValueAsString(event))
+                                    .name("heartbeat")
+                                    .data(objectMapper.writeValueAsString(AgentEvent.HeartbeatEvent()))
                             )
-                        } catch (e: Exception) {
-                            log.warn { "Failed to send SSE event: ${e.message}" }
+                        } catch (_: Exception) {
+                            // Emitter already closed — heartbeat will be cancelled shortly
+                        }
+                    }, HEARTBEAT_INTERVAL_SECONDS, HEARTBEAT_INTERVAL_SECONDS, TimeUnit.SECONDS)
+
+                    try {
+                        val activities = Collections.synchronizedList(mutableListOf<AgentEvent>())
+                        val listener = AgentEventListener { event ->
+                            if (event !is AgentEvent.ResponseChunkEvent) {
+                                activities.add(event)
+                            }
+                            try {
+                                emitter.send(
+                                    SseEmitter.event()
+                                        .name(event.type)
+                                        .data(objectMapper.writeValueAsString(event))
+                                )
+                            } catch (e: Exception) {
+                                log.warn { "Failed to send SSE event: ${e.message}" }
+                            }
+                        }
+
+                        block(listener, activities)
+
+                        heartbeat.cancel(false)
+                        emitter.complete()
+                    } catch (e: Exception) {
+                        heartbeat.cancel(false)
+                        log.warn { "SSE stream error: ${e.message}" }
+                        try {
+                            emitter.send(
+                                SseEmitter.event()
+                                    .name("error")
+                                    .data(objectMapper.writeValueAsString(AgentEvent.ErrorEvent(message = e.message ?: "Unknown error")))
+                            )
+                            emitter.complete()
+                        } catch (sendError: Exception) {
+                            log.warn { "Failed to send error event to client: ${sendError.message}" }
+                            emitter.completeWithError(e)
                         }
                     }
-
-                    block(listener, activities)
-
-                    heartbeat.cancel(false)
-                    emitter.complete()
-                } catch (e: Exception) {
-                    heartbeat.cancel(false)
-                    log.warn { "SSE stream error: ${e.message}" }
-                    try {
-                        emitter.send(
-                            SseEmitter.event()
-                                .name("error")
-                                .data(objectMapper.writeValueAsString(AgentEvent.ErrorEvent(message = e.message ?: "Unknown error")))
-                        )
-                        emitter.complete()
-                    } catch (sendError: Exception) {
-                        log.warn { "Failed to send error event to client: ${sendError.message}" }
-                        emitter.completeWithError(e)
-                    }
+                } finally {
+                    MDC.clear()
                 }
             }
 

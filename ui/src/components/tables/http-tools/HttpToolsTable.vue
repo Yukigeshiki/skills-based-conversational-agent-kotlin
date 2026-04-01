@@ -255,7 +255,7 @@ const sortedTools = computed(() => {
     if (col === 'name') {
       cmp = a.name.localeCompare(b.name)
     } else if (col === 'createdAt') {
-      cmp = a.createdAt.localeCompare(b.createdAt)
+      cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     }
     return dir === 'desc' ? -cmp : cmp
   })

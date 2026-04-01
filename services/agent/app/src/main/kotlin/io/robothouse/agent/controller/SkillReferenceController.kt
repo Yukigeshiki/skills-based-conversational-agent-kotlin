@@ -12,7 +12,6 @@ import jakarta.validation.Valid
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.validation.annotation.Validated
-import org.springframework.web.bind.annotation.CrossOrigin
 import org.springframework.web.bind.annotation.DeleteMapping
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PatchMapping
@@ -28,7 +27,6 @@ import java.util.UUID
  */
 @RestController
 @RequestMapping("/api/skills/{skillId}/references")
-@CrossOrigin(originPatterns = ["http://localhost:[*]", "http://127.0.0.1:[*]"], allowCredentials = "true")
 @Tag(name = "Skill References", description = "Skill reference document management endpoints")
 @Validated
 class SkillReferenceController(
