@@ -67,7 +67,7 @@ pnpm install
 pnpm dev  # port 5173
 ```
 
-The UI provides a chat interface, a skills management page, and an HTTP tools management page.
+The UI provides a chat interface, a skills management page, an HTTP tools management page, and an identity configuration page.
 
 ## Graph Architecture
 
@@ -103,6 +103,14 @@ agent.checkpointing-enabled=true
 ```
 
 When enabled, checkpoints are stored in the `graph_checkpoints` table and keyed by conversation ID (orchestration graph) or `agent:{conversationId}:{nanoTime}` (agent loop graph). Checkpoint state is human-readable and queryable via standard PostgreSQL JSONB operators. Custom Jackson serialization handles Langchain4j's ChatMessage hierarchy.
+
+## Identity
+
+The agent has a global identity prompt that defines its core personality and behavioural guidelines. This prompt is prepended to every skill's system prompt, ensuring the agent maintains a consistent personality regardless of which skill handles the request. Skill-specific instructions augment the identity but cannot override it.
+
+The identity prompt is configured via the Identity page in the UI (`/identity`) or the REST API (`GET/PUT /api/identity`). It is stored as a singleton row in the database, cached in memory on startup, and refreshed on update. The prompt is validated to be at least 10 characters and at most 1000 tokens.
+
+A default identity is seeded on first startup with core guidelines around conciseness, accuracy, helpfulness, tool usage, and staying in character.
 
 ## Skills
 
@@ -192,6 +200,18 @@ curl -N -X POST http://localhost:9090/api/chat/{conversationId}/approve \
 curl -N -X POST http://localhost:9090/api/chat/{conversationId}/approve \
   -H 'Content-Type: application/json' \
   -d '{"approvalId": "<uuid>", "decision": "REJECTED"}'
+```
+
+### Identity
+
+```bash
+# Get identity configuration
+curl http://localhost:9090/api/identity
+
+# Update identity system prompt
+curl -X PUT http://localhost:9090/api/identity \
+  -H 'Content-Type: application/json' \
+  -d '{"systemPrompt": "# Core Identity\n\nYou are a friendly, helpful assistant.\n\n## Guidelines\n\n- **Be concise** — provide clear, direct answers"}'
 ```
 
 ### Skills CRUD

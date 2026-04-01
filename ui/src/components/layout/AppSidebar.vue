@@ -52,9 +52,10 @@ import {
   Bot,
   ChevronLeft,
   ChevronRight,
+  Ghost,
   MessageSquare,
-  Plug,
-  Wrench,
+  Cable,
+  BookOpen,
 } from 'lucide-vue-next'
 
 /** A single navigation item rendered in the sidebar. */
@@ -79,12 +80,17 @@ const navItems: NavItem[] = [
   {
     path: '/skills',
     label: 'Skills',
-    icon: Wrench,
+    icon: BookOpen,
   },
   {
     path: '/http-tools',
     label: 'HTTP Tools',
-    icon: Plug,
+    icon: Cable,
+  },
+  {
+    path: '/identity',
+    label: 'Identity',
+    icon: Ghost,
   },
 ]
 

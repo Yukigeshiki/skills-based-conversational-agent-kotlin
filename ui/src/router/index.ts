@@ -23,6 +23,11 @@ const router = createRouter({
       name: 'http-tools',
       component: () => import('@/views/HttpToolsView.vue'),
     },
+    {
+      path: '/identity',
+      name: 'identity',
+      component: () => import('@/views/IdentityView.vue'),
+    },
   ],
 })
 

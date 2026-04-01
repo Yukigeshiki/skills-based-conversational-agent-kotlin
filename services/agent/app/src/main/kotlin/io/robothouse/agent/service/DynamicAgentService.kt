@@ -55,6 +55,7 @@ class DynamicAgentService(
     private val skillService: SkillService,
     private val delegateToSkillExecutorFactory: DelegateToSkillExecutorFactory,
     private val pendingApprovalService: PendingApprovalService,
+    private val identityService: IdentityService,
     @param:Autowired(required = false) @param:Qualifier("agentStreamingChatModel") private val agentStreamingChatModel: StreamingChatModel? = null,
     @param:Autowired(required = false) private val agentGraphStateSerializer: AgentGraphStateSerializer? = null,
     @param:Autowired(required = false) @param:Qualifier("agentCheckpointSaver") private val checkpointSaver: PostgresCheckpointSaver? = null
@@ -399,7 +400,15 @@ class DynamicAgentService(
      * and any RAG-retrieved reference chunks.
      */
     private fun buildSystemPrompt(skill: Skill, retrievedChunks: List<RetrievedChunk>): String {
-        val builder = StringBuilder(skill.systemPrompt)
+        val builder = StringBuilder()
+
+        val identityPrompt = identityService.getSystemPrompt()
+        if (identityPrompt.isNotBlank()) {
+            builder.append(identityPrompt)
+            builder.append("\n\n")
+        }
+
+        builder.append(skill.systemPrompt)
 
         val template = skill.responseTemplate
         if (!template.isNullOrBlank()) {

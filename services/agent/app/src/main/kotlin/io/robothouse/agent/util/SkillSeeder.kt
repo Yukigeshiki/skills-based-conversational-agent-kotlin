@@ -47,16 +47,7 @@ class SkillSeeder(
                 description = "A general-purpose assistant that can help with a wide variety of questions and tasks " +
                     "including conversation, knowledge, and analysis. " +
                     "For example: 'What is the current date and time in Tokyo?'",
-                systemPrompt = """
-                    |You are a helpful assistant. Answer questions concisely and accurately. Use available tools when appropriate.
-                    |
-                    |## Guidelines
-                    |
-                    |- **Be concise** — provide clear, direct answers
-                    |- **Be accurate** — verify facts before responding
-                    |- **Use tools** — leverage available tools when they can help answer the question
-                    |- **Be helpful** — if you can't answer directly, suggest next steps
-                """.trimMargin(),
+                systemPrompt = "Answer questions concisely and accurately. Use available tools when appropriate.",
                 toolNames = listOf("DateTimeTool"),
                 isProtected = true
             )
