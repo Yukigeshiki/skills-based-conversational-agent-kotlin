@@ -79,7 +79,7 @@ Handles the high-level request lifecycle. Acyclic flow with conditional edges fo
 
 ```
 START -> load_memory -> route_skill -> execute_skill -> conditional
-                                                         -> END (fallback skill)
+                                                         -> END (fallback skill or awaiting approval)
                                                          -> validate_response -> conditional
                                                                                   -> END (adequate)
                                                                                   -> reroute_fallback -> END
@@ -114,13 +114,13 @@ All queries use multistep planning — the agent decomposes the request into ste
 
 ### Skill-to-Skill Delegation
 
-During single-step execution, every skill has access to a `delegateToSkill` meta-tool that enables runtime delegation to other skills. When the LLM determines that a task requires capabilities from a different skill, it can call `delegateToSkill(skillName, request)` to hand the work off. The target skill executes with its own system prompt, tools, and RAG context, and the result flows back as a tool execution result. A configurable recursion depth limit (default 2) prevents infinite delegation chains. The current skill is excluded from the available delegation targets to prevent self-delegation.
+During single-step execution, every skill has access to a `delegateToSkill` meta-tool that enables runtime delegation to other skills. When the LLM determines that a task requires capabilities from a different skill, it can call `delegateToSkill(skillName, request)` to hand the work off. The target skill executes with its own system prompt, tools, and RAG context, and the result flows back as a tool execution result. A configurable recursion depth limit (default 2) prevents unbounded delegation chains, and a visited-skills set prevents circular delegation (A→B→A). The current skill and all skills already in the delegation chain are excluded from the available targets.
 
 Delegation is only available in single-step plans. Multistep plans handle cross-skill orchestration via the planner, which assigns each step to the appropriate skill — delegation is not needed and is excluded to prevent duplicate work between parallel steps.
 
 ### Tool Approval (Human-in-the-Loop)
 
-Skills can optionally require human approval before tool execution by setting `requiresApproval` to `true`. When enabled (requires `agent.checkpointing-enabled=true`), the agent loop pauses before executing tools, emits an `approval_required` SSE event with the pending tool calls, and waits for a human decision via the `POST /api/chat/{conversationId}/approve` endpoint. Approved requests resume from the checkpoint; rejected requests return a rejection message.
+Skills can optionally require human approval before tool execution by setting `requiresApproval` to `true`. When enabled (requires `agent.checkpointing-enabled=true`), the agent loop pauses before executing tools and presents approve/reject buttons in the chat UI. Approved requests resume from the checkpoint and complete execution; rejected requests return a rejection message. After approval, the response is validated for adequacy — inadequate responses are rerouted to the fallback skill, same as the normal orchestration flow.
 
 ### Response Templates
 
