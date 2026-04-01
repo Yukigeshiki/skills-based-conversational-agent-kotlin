@@ -114,10 +114,14 @@ class DelegateToSkillExecutorFactory(
             val delegationRequest = args["request"]
                 ?: return@ToolExecutor "Missing required parameter: request"
 
+            val updatedChain = delegationChain + currentSkillName
+
+            if (skillName in updatedChain) {
+                return@ToolExecutor "Cannot delegate to '$skillName' — it is already in the delegation chain."
+            }
+
             val targetSkill = skillService.findByName(skillName)
                 ?: return@ToolExecutor "Skill '$skillName' not found. Available skills can be viewed via the skills API."
-
-            val updatedChain = delegationChain + currentSkillName
 
             log.info { "Skill handoff: $currentSkillName -> $skillName (depth=$currentDepth, chain=$updatedChain)" }
             listener.onEvent(

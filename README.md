@@ -96,7 +96,7 @@ START -> call_llm -> conditional -> execute_tools -> call_llm (cycle)
 
 ### Checkpointing
 
-Both graphs support optional PostgreSQL-backed checkpointing, persisting full workflow state as JSONB after each node transition. Disabled by default; enable with:
+Both graphs support optional PostgreSQL-backed checkpointing, persisting full workflow state as JSONB after each node transition. Enabled by default with:
 
 ```properties
 agent.checkpointing-enabled=true

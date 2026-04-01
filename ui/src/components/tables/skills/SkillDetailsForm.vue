@@ -23,8 +23,8 @@
     />
     <div class="flex items-center gap-3">
       <Switch
-        :checked="model.requiresApproval"
-        @update:checked="model.requiresApproval = $event"
+        :model-value="requiresApproval"
+        @update:model-value="(v: boolean) => requiresApproval = v"
       />
       <Label for="skill-requires-approval">Require approval before tool execution</Label>
     </div>
@@ -110,6 +110,13 @@ const model = defineModel<SkillFormData>({ required: true })
 const emit = defineEmits<{
   valid: [value: boolean]
 }>()
+
+const requiresApproval = computed({
+  get: () => model.value.requiresApproval,
+  set: (value: boolean) => {
+    model.value = { ...model.value, requiresApproval: value }
+  },
+})
 
 const systemPromptPreview = ref(false)
 const responseTemplatePreview = ref(false)

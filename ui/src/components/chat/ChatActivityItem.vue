@@ -85,10 +85,20 @@
       </template>
 
       <template v-else-if="event.type === 'approval_required'">
-        <span class="text-yellow-600 dark:text-yellow-400">
-          Approval required for tool execution in
-          <span class="font-medium">{{ event.skillName }}</span>
-        </span>
+        <div>
+          <span class="text-yellow-600 dark:text-yellow-400">
+            Approval required for tool execution in
+            <span class="font-medium">{{ event.skillName }}</span>
+          </span>
+          <div v-if="showApprovalButtons" class="flex gap-2 mt-2">
+            <Button size="sm" class="cursor-pointer" @click="$emit('approve')">
+              Approve
+            </Button>
+            <Button size="sm" variant="outline" class="cursor-pointer" @click="$emit('reject')">
+              Reject
+            </Button>
+          </div>
+        </div>
       </template>
     </div>
   </div>
@@ -100,6 +110,7 @@
  */
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Button } from '@/components/ui/button'
 import {
   Zap,
   List,
@@ -114,7 +125,15 @@ import {
 } from 'lucide-vue-next'
 import type { ChatEvent } from '@/types/chat'
 
-const props = defineProps<{ event: ChatEvent }>()
+const props = defineProps<{
+  event: ChatEvent
+  showApprovalButtons?: boolean
+}>()
+
+defineEmits<{
+  approve: []
+  reject: []
+}>()
 
 /** Maps event types to their corresponding Lucide icon components. */
 const iconMap = {

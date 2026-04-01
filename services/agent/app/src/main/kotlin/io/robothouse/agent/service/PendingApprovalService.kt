@@ -10,6 +10,7 @@ import io.robothouse.agent.model.PendingToolCall
 import io.robothouse.agent.repository.PendingApprovalRepository
 import io.robothouse.agent.util.log
 import org.springframework.stereotype.Service
+import org.springframework.transaction.support.TransactionTemplate
 import java.time.Instant
 
 /**
@@ -18,7 +19,8 @@ import java.time.Instant
  */
 @Service
 class PendingApprovalService(
-    private val pendingApprovalRepository: PendingApprovalRepository
+    private val pendingApprovalRepository: PendingApprovalRepository,
+    private val transactionTemplate: TransactionTemplate
 ) {
 
     /**
@@ -49,18 +51,20 @@ class PendingApprovalService(
      * been resolved.
      */
     fun resolve(request: ApprovalRequest): PendingApproval {
-        val approval = pendingApprovalRepository.findById(request.approvalId).orElseThrow {
-            log.warn { "Pending approval not found: ${request.approvalId}" }
-            NotFoundException("Pending approval not found: ${request.approvalId}")
-        }
+        return transactionTemplate.execute {
+            val approval = pendingApprovalRepository.findById(request.approvalId).orElseThrow {
+                log.warn { "Pending approval not found: ${request.approvalId}" }
+                NotFoundException("Pending approval not found: ${request.approvalId}")
+            }
 
-        if (approval.status != ApprovalStatus.PENDING) {
-            log.warn { "Approval ${request.approvalId} has already been resolved: ${approval.status}" }
-            throw ConflictException("Approval ${request.approvalId} has already been resolved: ${approval.status}")
-        }
+            if (approval.status != ApprovalStatus.PENDING) {
+                log.warn { "Approval ${request.approvalId} has already been resolved: ${approval.status}" }
+                throw ConflictException("Approval ${request.approvalId} has already been resolved: ${approval.status}")
+            }
 
-        approval.status = if (request.decision == ApprovalDecision.APPROVED) ApprovalStatus.APPROVED else ApprovalStatus.REJECTED
-        approval.resolvedAt = Instant.now()
-        return pendingApprovalRepository.save(approval)
+            approval.status = if (request.decision == ApprovalDecision.APPROVED) ApprovalStatus.APPROVED else ApprovalStatus.REJECTED
+            approval.resolvedAt = Instant.now()
+            pendingApprovalRepository.save(approval)
+        }!!
     }
 }

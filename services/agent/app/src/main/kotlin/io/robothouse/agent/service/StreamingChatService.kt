@@ -176,13 +176,45 @@ class StreamingChatService(
             // APPROVED — resume the agent graph
             val response = dynamicAgentService.resumeAfterApproval(approval, listener)
 
+            // Validate the response for adequacy (same check as the orchestration graph's
+            // Validate the response for adequacy (same check as the orchestration graph's
+            // validate_response node). If inadequate, reroute to the fallback skill using
+            // the original user message from conversation history.
+            val history = try {
+                conversationMemoryService.getHistory(approval.conversationId)
+            } catch (_: Exception) { emptyList() }
+
+            val originalUserMessage = history.lastOrNull { it.role == "user" }?.content ?: ""
+
+            val isFallback = approval.skillName == SkillRouterService.FALLBACK_SKILL_NAME
+            val finalResponse = if (!isFallback && !responseValidationService.isAdequate(
+                    originalUserMessage,
+                    response.response
+                )) {
+                log.info { "Post-approval response from ${approval.skillName} deemed inadequate — rerouting to fallback" }
+                listener.onEvent(AgentEvent.SkillReroutedEvent(
+                    fromSkill = approval.skillName,
+                    toSkill = SkillRouterService.FALLBACK_SKILL_NAME
+                ))
+                listener.onEvent(AgentEvent.SkillMatchedEvent(skillName = SkillRouterService.FALLBACK_SKILL_NAME))
+
+                val fallbackSkill = skillRouterService.findFallbackSkill()
+                val fallbackResponse = dynamicAgentService.chat(
+                    fallbackSkill, originalUserMessage, listener, history,
+                    conversationId = approval.conversationId
+                )
+                fallbackResponse
+            } else {
+                response
+            }
+
             try {
                 conversationMemoryService.addMessage(
                     approval.conversationId,
                     ConversationMessage(
                         role = "assistant",
-                        content = response.response,
-                        skill = response.skill,
+                        content = finalResponse.response,
+                        skill = finalResponse.skill,
                         activities = activities.toList()
                     )
                 )

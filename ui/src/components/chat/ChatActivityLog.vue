@@ -12,7 +12,14 @@
       <span v-else>Composing&hellip;</span>
     </button>
     <div v-if="isExpanded" class="mt-1 border-l-2 border-border pl-3 space-y-0.5">
-      <ChatActivityItem v-for="(event, index) in displayActivities" :key="index" :event="event" />
+      <ChatActivityItem
+        v-for="(event, index) in displayActivities"
+        :key="index"
+        :event="event"
+        :show-approval-buttons="event.type === 'approval_required' && event.approvalId === pendingApprovalId && !approvingInProgress"
+        @approve="$emit('approve')"
+        @reject="$emit('reject')"
+      />
       <div v-if="streamingPreview" class="flex items-start gap-2 py-1 text-xs text-muted-foreground">
         <Brain class="mt-0.5 h-3.5 w-3.5 shrink-0 animate-pulse" />
         <pre class="min-w-0 flex-1 whitespace-pre-wrap font-sans italic">{{ streamingPreview }}</pre>
@@ -41,6 +48,15 @@ const props = defineProps<{
   streaming: boolean
   /** Accumulated streaming text to show as a thought-like preview. */
   streamingText?: string
+  /** The approval ID currently pending, if any. */
+  pendingApprovalId?: string
+  /** Whether an approval request is currently in flight. */
+  approvingInProgress?: boolean
+}>()
+
+defineEmits<{
+  approve: []
+  reject: []
 }>()
 
 /**

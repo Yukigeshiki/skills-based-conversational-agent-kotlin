@@ -113,8 +113,8 @@
         />
         <div class="flex items-center gap-1 shrink-0">
           <Switch
-            :checked="param.required"
-            @update:checked="param.required = $event"
+            :model-value="param.required"
+            @update:model-value="param.required = $event"
           />
           <span class="text-xs text-muted-foreground">Req</span>
         </div>

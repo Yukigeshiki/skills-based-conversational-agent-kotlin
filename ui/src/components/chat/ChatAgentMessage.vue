@@ -5,6 +5,10 @@
         :activities="displayActivities"
         :streaming="message.status === 'streaming'"
         :streaming-text="message.streamingText"
+        :pending-approval-id="message.pendingApprovalId"
+        :approving-in-progress="approvingInProgress"
+        @approve="$emit('approve', message.id)"
+        @reject="$emit('reject', message.id)"
       />
       <ChatErrorMessage v-if="message.error" :error="message.error" />
       <div
@@ -27,6 +31,13 @@ import ChatErrorMessage from './ChatErrorMessage.vue'
 const props = defineProps<{
   /** The assistant chat message to render. */
   message: ChatMessage
+  /** Whether an approval request is currently in flight. */
+  approvingInProgress?: boolean
+}>()
+
+defineEmits<{
+  approve: [messageId: string]
+  reject: [messageId: string]
 }>()
 
 /** True when the plan has 2+ steps. */

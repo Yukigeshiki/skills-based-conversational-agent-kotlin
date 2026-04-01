@@ -14,6 +14,7 @@ export interface ChatMessage {
   status: MessageStatus
   error?: string
   streamingText?: string
+  pendingApprovalId?: string
 }
 
 /** A message as returned by the conversation history REST endpoint. */

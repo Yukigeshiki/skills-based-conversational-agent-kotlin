@@ -118,6 +118,10 @@ export function useChatMessages() {
     } else if (event.type === 'skill_rerouted') {
       resetChunkBuffer()
       updated.streamingText = undefined
+    } else if (event.type === 'approval_required') {
+      updated.pendingApprovalId = event.approvalId
+    } else if (event.type === 'approval_resolved') {
+      updated.pendingApprovalId = undefined
     }
 
     const newMessages = [...messages.value]
@@ -151,5 +155,12 @@ export function useChatMessages() {
     messages.value = newMessages
   }
 
-  return { messages, addUserMessage, startAssistantMessage, addActivity, completeMessage, setMessages }
+  /**
+   * Returns a message by ID, or undefined if not found.
+   */
+  function getMessage(messageId: string): ChatMessage | undefined {
+    return messages.value.find((m) => m.id === messageId)
+  }
+
+  return { messages, addUserMessage, startAssistantMessage, addActivity, completeMessage, setMessages, getMessage }
 }

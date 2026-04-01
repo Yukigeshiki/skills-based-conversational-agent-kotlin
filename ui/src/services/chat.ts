@@ -43,10 +43,30 @@ class ChatService {
   }
 
   /**
+   * Sends a tool approval decision and streams the remaining execution via SSE.
+   */
+  approveToolExecution(
+    conversationId: string,
+    approvalId: string,
+    decision: 'APPROVED' | 'REJECTED',
+    callbacks: ChatStreamCallbacks,
+  ): AbortController {
+    const controller = new AbortController()
+
+    this.streamSse(
+      `${API_URL}/api/chat/${conversationId}/approve`,
+      { approvalId, decision },
+      callbacks,
+      controller.signal,
+    ).catch((err) =>
+      callbacks.onError(err instanceof Error ? err.message : 'Unexpected error'),
+    )
+
+    return controller
+  }
+
+  /**
    * Fetches the full conversation history for a given conversation ID.
-   *
-   * @param conversationId - The UUID of the conversation to retrieve.
-   * @returns The ordered list of messages in the conversation.
    */
   async getHistory(conversationId: string): Promise<ConversationHistoryMessage[]> {
     const response = await apiClient.get<ConversationHistoryMessage[]>(
@@ -57,26 +77,17 @@ class ChatService {
 
   /**
    * Performs the actual fetch-based SSE streaming, reading chunks from the
-   * response body and splitting them into SSE blocks for parsing.
-   *
-   * @param message - The user's message text.
-   * @param callbacks - Handlers for stream events, errors, and completion.
-   * @param signal - AbortSignal to cancel the request.
-   * @param conversationId - Optional conversation ID to continue.
+   * response body and splitting them into SSE blocks for parsing. Used by
+   * both chat and approval flows.
    */
-  private async streamResponse(
-    message: string,
+  private async streamSse(
+    url: string,
+    body: Record<string, unknown>,
     callbacks: ChatStreamCallbacks,
     signal: AbortSignal,
-    conversationId?: string,
   ): Promise<void> {
     try {
-      const body: Record<string, string> = { message }
-      if (conversationId) {
-        body.conversationId = conversationId
-      }
-
-      const response = await fetch(`${API_URL}/api/chat`, {
+      const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -101,7 +112,6 @@ class ChatService {
         const { done, value } = await reader.read()
 
         if (done) {
-          // Process any remaining buffer
           if (buffer.trim()) {
             this.processBlock(buffer, callbacks)
           }
@@ -112,7 +122,6 @@ class ChatService {
         buffer += decoder.decode(value, { stream: true })
 
         const blocks = buffer.split('\n\n')
-        // Keep the last (potentially incomplete) block as the buffer
         buffer = blocks.pop() ?? ''
 
         for (const block of blocks) {
@@ -123,14 +132,30 @@ class ChatService {
       }
     } catch (err) {
       if (signal.aborted) return
-      const message =
+      const errorMsg =
         err instanceof TypeError
           ? 'Unable to connect to the server. Please check that the backend is running.'
           : err instanceof Error
             ? err.message
             : 'Connection failed'
-      callbacks.onError(message)
+      callbacks.onError(errorMsg)
     }
+  }
+
+  /**
+   * Sends a chat message via the shared SSE streaming method.
+   */
+  private async streamResponse(
+    message: string,
+    callbacks: ChatStreamCallbacks,
+    signal: AbortSignal,
+    conversationId?: string,
+  ): Promise<void> {
+    const body: Record<string, unknown> = { message }
+    if (conversationId) {
+      body.conversationId = conversationId
+    }
+    return this.streamSse(`${API_URL}/api/chat`, body, callbacks, signal)
   }
 
   /**

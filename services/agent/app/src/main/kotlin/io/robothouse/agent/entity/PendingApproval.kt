@@ -41,6 +41,7 @@ class PendingApproval(
 
     @Column(name = "tool_calls", nullable = false, columnDefinition = "jsonb")
     @Convert(converter = PendingToolCallListConverter::class)
+    @org.hibernate.annotations.JdbcTypeCode(org.hibernate.type.SqlTypes.JSON)
     var toolCalls: List<PendingToolCall> = emptyList(),
 
     @Enumerated(EnumType.STRING)

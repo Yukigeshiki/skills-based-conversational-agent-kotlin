@@ -87,7 +87,11 @@ object OrchestrationGraphBuilder {
         graph.addConditionalEdges(
             EXECUTE_SKILL,
             edge_async { state: OrchestrationGraphState ->
-                if (state.matchedSkill.name == SkillRouterService.FALLBACK_SKILL_NAME) "done" else "validate"
+                when {
+                    state.agentResponse.awaitingApproval -> "done"
+                    state.matchedSkill.name == SkillRouterService.FALLBACK_SKILL_NAME -> "done"
+                    else -> "validate"
+                }
             },
             mapOf("done" to END, "validate" to VALIDATE_RESPONSE)
         )

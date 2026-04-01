@@ -9,6 +9,9 @@
       <ChatMessageList
         ref="messageListRef"
         :messages="messages"
+        :approving-in-progress="approvingInProgress"
+        @approve="(msgId) => approve(msgId, 'APPROVED')"
+        @reject="(msgId) => approve(msgId, 'REJECTED')"
       />
       <ChatInputBar
         v-model="inputText"
@@ -37,16 +40,17 @@ import {
   useConversation,
 } from '@/composables/chat'
 
-const { messages, addUserMessage, startAssistantMessage, addActivity, completeMessage, setMessages } =
+const { messages, addUserMessage, startAssistantMessage, addActivity, completeMessage, setMessages, getMessage } =
   useChatMessages()
 const { conversationId, setConversationId, startNewConversation, loadHistory } = useConversation()
 
-const { isStreaming, send, stop } = useChatStream({
+const { isStreaming, approvingInProgress, send, stop, approve } = useChatStream({
   actions: {
     addUserMessage,
     startAssistantMessage,
     addActivity,
     completeMessage,
+    getMessage,
   },
   conversationId,
   onConversationStarted: setConversationId,

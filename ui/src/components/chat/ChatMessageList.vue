@@ -2,7 +2,13 @@
   <div ref="containerRef" class="flex-1 overflow-y-auto px-4 py-4 space-y-4">
     <template v-for="message in messages" :key="message.id">
       <ChatUserMessage v-if="message.role === 'user'" :message="message" />
-      <ChatAgentMessage v-else :message="message" />
+      <ChatAgentMessage
+        v-else
+        :message="message"
+        :approving-in-progress="approvingInProgress"
+        @approve="(msgId) => $emit('approve', msgId)"
+        @reject="(msgId) => $emit('reject', msgId)"
+      />
     </template>
     <ChatStreamingIndicator
       v-if="streamingMessage"
@@ -29,6 +35,13 @@ import ChatStreamingIndicator from './ChatStreamingIndicator.vue'
 const props = defineProps<{
   /** The list of chat messages to render. */
   messages: ChatMessage[]
+  /** Whether an approval request is currently in flight. */
+  approvingInProgress?: boolean
+}>()
+
+defineEmits<{
+  approve: [messageId: string]
+  reject: [messageId: string]
 }>()
 
 const containerRef = ref<HTMLElement | null>(null)

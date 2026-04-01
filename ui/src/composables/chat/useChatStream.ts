@@ -1,13 +1,13 @@
 /**
  * Composable that connects to the backend SSE stream for a chat message.
  *
- * Orchestrates the send/stop lifecycle: creates an assistant message placeholder,
- * streams events into it via the provided message actions, tracks the conversation
- * ID, and supports aborting an in-flight request.
+ * Orchestrates the send/stop/approve lifecycle: creates an assistant message
+ * placeholder, streams events into it via the provided message actions, tracks
+ * the conversation ID, and supports aborting an in-flight request.
  */
 import { ref, type Ref } from 'vue'
 import { chatService } from '@/services/chat'
-import type { ChatEvent } from '@/types/chat'
+import type { ChatEvent, ChatMessage } from '@/types/chat'
 
 /** Callbacks into the message store used by the stream to update UI state. */
 export interface MessageActions {
@@ -15,6 +15,7 @@ export interface MessageActions {
   startAssistantMessage: () => string
   addActivity: (messageId: string, event: ChatEvent) => void
   completeMessage: (messageId: string) => void
+  getMessage: (messageId: string) => ChatMessage | undefined
 }
 
 /** Configuration for {@link useChatStream}. */
@@ -30,14 +31,13 @@ export interface ChatStreamOptions {
 export function useChatStream(options: ChatStreamOptions) {
   const { actions, conversationId, onConversationStarted } = options
   const isStreaming = ref(false)
+  const approvingInProgress = ref(false)
   let abortController: AbortController | null = null
   let currentMessageId: string | null = null
 
   /**
    * Sends a message to the backend and begins streaming the response.
    * No-op if already streaming or the message is empty.
-   *
-   * @param message - The user's message text.
    */
   function send(message: string): void {
     if (isStreaming.value || !message.trim()) return
@@ -68,13 +68,61 @@ export function useChatStream(options: ChatStreamOptions) {
           currentMessageId = null
         },
         onComplete() {
-          actions.completeMessage(messageId)
           isStreaming.value = false
           abortController = null
           currentMessageId = null
         },
       },
       conversationId.value ?? undefined,
+    )
+  }
+
+  /**
+   * Sends an approval decision for a pending tool execution and streams
+   * the remaining events into the same assistant message.
+   */
+  function approve(messageId: string, decision: 'APPROVED' | 'REJECTED'): void {
+    if (isStreaming.value || approvingInProgress.value) return
+
+    const msg = actions.getMessage(messageId)
+    if (!msg?.pendingApprovalId || !conversationId.value) return
+
+    const approvalId = msg.pendingApprovalId
+
+    // Hide buttons immediately but don't clear pendingApprovalId yet —
+    // the server's approval_resolved event handles the permanent clear.
+    // If the request fails, buttons reappear so the user can retry.
+    approvingInProgress.value = true
+    isStreaming.value = true
+    currentMessageId = messageId
+
+    abortController = chatService.approveToolExecution(
+      conversationId.value,
+      approvalId,
+      decision,
+      {
+        onEvent(event: ChatEvent) {
+          actions.addActivity(messageId, event)
+        },
+        onError(error: string) {
+          actions.addActivity(messageId, {
+            type: 'error',
+            message: error,
+            timestamp: new Date().toISOString(),
+          })
+          approvingInProgress.value = false
+          isStreaming.value = false
+          abortController = null
+          currentMessageId = null
+        },
+        onComplete() {
+          actions.completeMessage(messageId)
+          approvingInProgress.value = false
+          isStreaming.value = false
+          abortController = null
+          currentMessageId = null
+        },
+      },
     )
   }
 
@@ -91,5 +139,5 @@ export function useChatStream(options: ChatStreamOptions) {
     isStreaming.value = false
   }
 
-  return { isStreaming, send, stop }
+  return { isStreaming, approvingInProgress, send, stop, approve }
 }

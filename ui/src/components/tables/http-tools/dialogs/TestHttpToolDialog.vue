@@ -23,8 +23,8 @@
             <Switch
               v-if="param.type === 'boolean'"
               :id="`test-${param.name}`"
-              :checked="!!testArgs[param.name]"
-              @update:checked="testArgs[param.name] = $event"
+              :model-value="!!testArgs[param.name]"
+              @update:model-value="testArgs[param.name] = $event"
             />
             <Input
               v-else-if="param.type === 'integer' || param.type === 'number'"
