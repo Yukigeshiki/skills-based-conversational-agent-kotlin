@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import org.mockito.kotlin.any
+import org.mockito.kotlin.atLeastOnce
 import org.mockito.kotlin.mock
 import org.mockito.kotlin.times
 import org.mockito.kotlin.verify
@@ -30,7 +31,7 @@ class SkillRouterServiceTest {
     private val embeddingStore: EmbeddingStore<TextSegment> = mock()
     private val skillRepository: SkillRepository = mock()
     private val skillCacheService: SkillCacheService = mock()
-    private val properties = SkillRoutingProperties(minSimilarityThreshold = 0.60)
+    private val properties = SkillRoutingProperties(minSimilarityThreshold = 0.60, minTokenOverlapRatio = 0.3)
     private val queryEnrichmentService: QueryEnrichmentService = mock()
 
     private val routerService = SkillRouterService(
@@ -232,5 +233,127 @@ class SkillRouterServiceTest {
         val result = routerService.route("do it")
 
         assertEquals("general-assistant", result.name)
+    }
+
+    // --- Token overlap tests ---
+
+    @Test
+    fun `routes to skill by token overlap when enough tokens match`() {
+        val skill = Skill(id = UUID.randomUUID(), name = "weather-forecast", description = "Helps with weather forecasts and temperature predictions for cities worldwide", systemPrompt = "prompt", toolNames = emptyList())
+        val fallbackSkill = Skill(id = UUID.randomUUID(), name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
+
+        whenever(skillCacheService.findAll()).thenReturn(listOf(skill, fallbackSkill))
+
+        val result = routerService.route("what is the weather forecast temperature predictions for cities")
+
+        assertEquals("weather-forecast", result.name)
+        verify(skillCacheService, atLeastOnce()).findAll()
+        verify(embeddingModel, times(0)).embed(any<String>())
+        verify(queryEnrichmentService, times(0)).enrich(any(), any())
+    }
+
+    @Test
+    fun `falls through to embedding when token overlap score is below threshold`() {
+        val skill = Skill(id = UUID.randomUUID(), name = "weather-forecast", description = "Helps with weather forecasts", systemPrompt = "prompt", toolNames = emptyList())
+        val fallbackSkill = Skill(id = UUID.randomUUID(), name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
+
+        whenever(skillCacheService.findAll()).thenReturn(listOf(skill, fallbackSkill))
+        whenever(embeddingModel.embed(any<String>())).thenReturn(Response(embedding))
+        whenever(embeddingStore.search(any<EmbeddingSearchRequest>())).thenReturn(EmbeddingSearchResult(emptyList()))
+        whenever(skillRepository.findByName("general-assistant")).thenReturn(fallbackSkill)
+
+        val result = routerService.route("is it cold outside")
+
+        assertEquals("general-assistant", result.name)
+        verify(embeddingModel, times(1)).embed(any<String>())
+    }
+
+    @Test
+    fun `picks highest scoring skill when multiple skills match token overlap`() {
+        val skillA = Skill(id = UUID.randomUUID(), name = "weather-forecast", description = "Helps with weather forecasts and temperature predictions for cities worldwide", systemPrompt = "prompt", toolNames = emptyList())
+        val skillB = Skill(id = UUID.randomUUID(), name = "travel-planner", description = "Plans travel itineraries for cities and weather conditions", systemPrompt = "prompt", toolNames = emptyList())
+        val fallbackSkill = Skill(id = UUID.randomUUID(), name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
+
+        whenever(skillCacheService.findAll()).thenReturn(listOf(skillA, skillB, fallbackSkill))
+
+        val result = routerService.route("weather forecast temperature predictions for cities")
+
+        assertEquals("weather-forecast", result.name)
+    }
+
+    @Test
+    fun `excludes fallback skill from token overlap matching`() {
+        val fallbackSkill = Skill(id = UUID.randomUUID(), name = "general-assistant", description = "general purpose assistant that helps with everything and anything you need", systemPrompt = "prompt", toolNames = emptyList())
+
+        whenever(skillCacheService.findAll()).thenReturn(listOf(fallbackSkill))
+        whenever(embeddingModel.embed(any<String>())).thenReturn(Response(embedding))
+        whenever(embeddingStore.search(any<EmbeddingSearchRequest>())).thenReturn(EmbeddingSearchResult(emptyList()))
+        whenever(skillRepository.findByName("general-assistant")).thenReturn(fallbackSkill)
+
+        val result = routerService.route("general purpose assistant that helps with everything")
+
+        assertEquals("general-assistant", result.name)
+        verify(embeddingModel, times(1)).embed(any<String>())
+    }
+
+    @Test
+    fun `handles message with only short tokens gracefully`() {
+        val skill = Skill(id = UUID.randomUUID(), name = "weather-forecast", description = "weather help", systemPrompt = "prompt", toolNames = emptyList())
+        val fallbackSkill = Skill(id = UUID.randomUUID(), name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
+
+        whenever(skillCacheService.findAll()).thenReturn(listOf(skill, fallbackSkill))
+        whenever(embeddingModel.embed(any<String>())).thenReturn(Response(embedding))
+        whenever(embeddingStore.search(any<EmbeddingSearchRequest>())).thenReturn(EmbeddingSearchResult(emptyList()))
+        whenever(skillRepository.findByName("general-assistant")).thenReturn(fallbackSkill)
+
+        val result = routerService.route("I a")
+
+        assertEquals("general-assistant", result.name)
+    }
+
+    @Test
+    fun `token overlap matches when tokens overlap exactly`() {
+        val skill = Skill(id = UUID.randomUUID(), name = "datetime-assistant", description = "Handles timezone conversions and scheduling", systemPrompt = "prompt", toolNames = emptyList())
+        val fallbackSkill = Skill(id = UUID.randomUUID(), name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
+
+        whenever(skillCacheService.findAll()).thenReturn(listOf(skill, fallbackSkill))
+
+        val result = routerService.route("what datetime timezone scheduling")
+
+        assertEquals("datetime-assistant", result.name)
+        verify(embeddingModel, times(0)).embed(any<String>())
+    }
+
+    @Test
+    fun `token overlap filters stop words and short tokens`() {
+        val skill = Skill(id = UUID.randomUUID(), name = "weather-forecast", description = "Provides forecasts", systemPrompt = "prompt", toolNames = emptyList())
+        val fallbackSkill = Skill(id = UUID.randomUUID(), name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
+
+        whenever(skillCacheService.findAll()).thenReturn(listOf(skill, fallbackSkill))
+        whenever(embeddingModel.embed(any<String>())).thenReturn(Response(embedding))
+        whenever(embeddingStore.search(any<EmbeddingSearchRequest>())).thenReturn(EmbeddingSearchResult(emptyList()))
+        whenever(skillRepository.findByName("general-assistant")).thenReturn(fallbackSkill)
+
+        // After stop word + length filter, only "tomorrow" remains as a meaningful token,
+        // which does not appear in the skill tokens — so token overlap should not match.
+        val result = routerService.route("what is the for an by tomorrow")
+
+        assertEquals("general-assistant", result.name)
+        verify(embeddingModel, times(1)).embed(any<String>())
+    }
+
+    @Test
+    fun `token overlap tie-break is deterministic by skill name ascending`() {
+        // Two skills with identical descriptions will produce the same Jaccard score.
+        // The tie-break sorts by skill name ascending, so "alpha-skill" wins over "beta-skill".
+        val skillAlpha = Skill(id = UUID.randomUUID(), name = "alpha-skill", description = "weather forecast temperature predictions cities", systemPrompt = "prompt", toolNames = emptyList())
+        val skillBeta = Skill(id = UUID.randomUUID(), name = "beta-skill", description = "weather forecast temperature predictions cities", systemPrompt = "prompt", toolNames = emptyList())
+        val fallbackSkill = Skill(id = UUID.randomUUID(), name = "general-assistant", description = "general", systemPrompt = "prompt", toolNames = emptyList())
+
+        whenever(skillCacheService.findAll()).thenReturn(listOf(skillBeta, skillAlpha, fallbackSkill))
+
+        val result = routerService.route("weather forecast temperature predictions cities")
+
+        assertEquals("alpha-skill", result.name)
     }
 }

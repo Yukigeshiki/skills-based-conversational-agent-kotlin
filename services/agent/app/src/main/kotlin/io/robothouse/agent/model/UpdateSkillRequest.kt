@@ -21,7 +21,7 @@ data class UpdateSkillRequest(
     val name: String? = null,
 
     @field:NotBlank(message = "Description must not be blank")
-    @field:Size(max = 1000, message = "Description must not exceed 1000 characters")
+    @field:Size(min = 50, max = 1000, message = "Description must be between 50 and 1000 characters")
     val description: String? = null,
 
     @field:NotBlank(message = "System prompt must not be blank")

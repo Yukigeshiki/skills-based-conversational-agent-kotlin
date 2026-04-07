@@ -42,7 +42,7 @@ class SkillControllerIntegrationTest {
     fun `POST creates skill and returns 201`() {
         val request = mapOf(
             "name" to "integration-skill",
-            "description" to "An integration test skill",
+            "description" to "An integration test skill that handles date and time queries for users",
             "systemPrompt" to "You are a test assistant.",
             "toolNames" to listOf("DateTimeTool")
         )
@@ -53,7 +53,7 @@ class SkillControllerIntegrationTest {
         }.andExpect {
             status { isCreated() }
             jsonPath("$.name") { value("integration-skill") }
-            jsonPath("$.description") { value("An integration test skill") }
+            jsonPath("$.description") { value("An integration test skill that handles date and time queries for users") }
             jsonPath("$.id") { exists() }
             jsonPath("$.createdAt") { exists() }
             jsonPath("$.updatedAt") { exists() }
@@ -298,7 +298,7 @@ class SkillControllerIntegrationTest {
 
         val update = mapOf(
             "name" to "patch-skill",
-            "description" to "Updated description",
+            "description" to "Updated description that is long enough to satisfy the minimum length requirement",
             "systemPrompt" to "P",
             "toolNames" to listOf("DateTimeTool")
         )
@@ -308,7 +308,7 @@ class SkillControllerIntegrationTest {
             content = objectMapper.writeValueAsString(update)
         }.andExpect {
             status { isOk() }
-            jsonPath("$.description") { value("Updated description") }
+            jsonPath("$.description") { value("Updated description that is long enough to satisfy the minimum length requirement") }
             jsonPath("$.name") { value("patch-skill") }
         }
     }
