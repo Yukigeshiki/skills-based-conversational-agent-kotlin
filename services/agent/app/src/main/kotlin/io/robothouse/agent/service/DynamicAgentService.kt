@@ -72,7 +72,8 @@ class DynamicAgentService(
         userMessage: String,
         listener: AgentEventListener = AgentEventListener.NOOP,
         conversationHistory: List<ConversationMessage> = emptyList(),
-        conversationId: String? = null
+        conversationId: String? = null,
+        systemPromptSuffix: String? = null
     ): AgentResponse {
         log.debug { "Processing chat request for skill: name=${skill.name}, tools=${skill.toolNames}" }
 
@@ -86,7 +87,12 @@ class DynamicAgentService(
         // 2. Fast path: single-step plans (or approval-required skills forced to single step)
         if (plan.steps.size <= 1 || approvalRequired) {
             val retrievedChunks = skill.id?.let { referenceRetrievalService.retrieveChunks(it, userMessage) } ?: emptyList()
-            val effectiveSystemPrompt = buildSystemPrompt(skill, retrievedChunks)
+            // The suffix only applies on the single-step path — directive retries are
+            // always single-step in practice, and threading it through the multistep
+            // path is intentionally not supported.
+            val effectiveSystemPrompt = buildSystemPrompt(skill, retrievedChunks).let {
+                if (systemPromptSuffix != null) "$it\n\n$systemPromptSuffix" else it
+            }
             val specifications = toolService.getSpecificationsByNames(skill.toolNames)
             val executors = toolService.getExecutorsByNames(skill.toolNames)
 
@@ -457,7 +463,17 @@ class DynamicAgentService(
         conversationHistory.forEach { msg ->
             when (msg.role) {
                 "user" -> appendUserMessage(messages, msg.content)
-                "assistant" -> appendAssistantMessage(messages, msg.content)
+                "assistant" -> {
+                    // Replace cross-skill assistant turns with a neutral placeholder so
+                    // the model doesn't anchor on the prior skill's persona. Null-skill
+                    // (legacy) messages are kept as-is.
+                    val content = if (msg.skill != null && msg.skill != skillName) {
+                        "[Earlier in this conversation, the ${msg.skill} skill responded to a different topic.]"
+                    } else {
+                        msg.content
+                    }
+                    appendAssistantMessage(messages, content)
+                }
             }
         }
         appendUserMessage(messages, userMessage)

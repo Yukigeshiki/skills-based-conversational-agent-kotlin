@@ -58,7 +58,8 @@ class RequestFilter : OncePerRequestFilter() {
         response.addHeader(REQUEST_ID_HEADER, requestId)
         request.setAttribute(REQUEST_ID_KEY, requestId)
 
-        if (!request.requestURI.startsWith("/actuator")) {
+        // Skip CORS preflight (OPTIONS) and actuator probes — both are high-volume noise.
+        if (request.method != "OPTIONS" && !request.requestURI.startsWith("/actuator")) {
             log.info { "Incoming request: ${request.method} ${request.requestURI} — params: $params" }
         }
 

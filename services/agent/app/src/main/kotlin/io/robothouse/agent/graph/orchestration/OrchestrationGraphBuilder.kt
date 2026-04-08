@@ -42,6 +42,11 @@ object OrchestrationGraphBuilder {
     private const val VALIDATE_RESPONSE = "validate_response"
     private const val REROUTE_FALLBACK = "reroute_fallback"
 
+    private const val DIRECTIVE_RETRY_SUFFIX =
+        "IMPORTANT: Your previous response to this question was deemed unhelpful. " +
+            "The user wants a direct answer to their question, not a refusal or referral elsewhere. " +
+            "Answer the question directly using your general knowledge."
+
     /**
      * Builds and compiles the orchestration graph from the given [ctx].
      *
@@ -87,11 +92,7 @@ object OrchestrationGraphBuilder {
         graph.addConditionalEdges(
             EXECUTE_SKILL,
             edge_async { state: OrchestrationGraphState ->
-                when {
-                    state.agentResponse.awaitingApproval -> "done"
-                    state.matchedSkill.name == SkillRouterService.FALLBACK_SKILL_NAME -> "done"
-                    else -> "validate"
-                }
+                if (state.agentResponse.awaitingApproval) "done" else "validate"
             },
             mapOf("done" to END, "validate" to VALIDATE_RESPONSE)
         )
@@ -163,10 +164,11 @@ object OrchestrationGraphBuilder {
     }
 
     /**
-     * Executes the matched skill via the dynamic agent service. For specialist
-     * skills, uses a gated listener that holds back the [AgentEvent.FinalResponseEvent]
-     * so it can be conditionally emitted after validation. For fallback skills,
-     * passes the original listener directly.
+     * Executes the matched skill via the dynamic agent service using a gated
+     * listener that holds back the [AgentEvent.FinalResponseEvent] so it can be
+     * conditionally emitted after validation. The gate applies to ALL skills
+     * (including the fallback) — without it, an inadequate fallback response
+     * would reach the user before the validator had a chance to suppress it.
      */
     private fun executeSkill(
         state: OrchestrationGraphState,
@@ -174,17 +176,12 @@ object OrchestrationGraphBuilder {
         heldFinalEvent: AtomicReference<AgentEvent.FinalResponseEvent?>
     ): Map<String, Any> {
         val skill = state.matchedSkill
-        val isFallback = skill.name == SkillRouterService.FALLBACK_SKILL_NAME
 
-        val effectiveListener = if (isFallback) {
-            ctx.listener
-        } else {
-            AgentEventListener { event ->
-                if (event is AgentEvent.FinalResponseEvent) {
-                    heldFinalEvent.set(event)
-                } else {
-                    ctx.listener.onEvent(event)
-                }
+        val effectiveListener = AgentEventListener { event ->
+            if (event is AgentEvent.FinalResponseEvent) {
+                heldFinalEvent.set(event)
+            } else {
+                ctx.listener.onEvent(event)
             }
         }
 
@@ -197,8 +194,8 @@ object OrchestrationGraphBuilder {
     }
 
     /**
-     * Validates whether the specialist skill's response adequately answers the
-     * user's question. If adequate, emits the held [AgentEvent.FinalResponseEvent].
+     * Validates whether the response adequately answers the user's question.
+     * If adequate, emits the held [AgentEvent.FinalResponseEvent].
      */
     private fun validateResponse(
         state: OrchestrationGraphState,
@@ -217,25 +214,53 @@ object OrchestrationGraphBuilder {
     }
 
     /**
-     * Reroutes to the fallback skill after a specialist response was deemed
-     * inadequate. Emits [AgentEvent.SkillReroutedEvent] and
-     * [AgentEvent.SkillMatchedEvent] before executing the fallback.
+     * Reroutes after an inadequate response. Specialist → fallback uses the original
+     * history (cross-skill content is neutralised in `DynamicAgentService.executeStep`).
+     * Fallback → fallback uses empty history plus a directive suffix to break out of a
+     * refusal loop. The graph is acyclic, so this fires at most once.
      */
     private fun rerouteFallback(
         state: OrchestrationGraphState,
         ctx: OrchestrationGraphContext
     ): Map<String, Any> {
         val fromSkill = state.matchedSkill.name
-
-        log.info { "Rerouting from $fromSkill to ${SkillRouterService.FALLBACK_SKILL_NAME}" }
-        ctx.listener.onEvent(AgentEvent.SkillReroutedEvent(fromSkill = fromSkill, toSkill = SkillRouterService.FALLBACK_SKILL_NAME))
-        ctx.listener.onEvent(AgentEvent.SkillMatchedEvent(skillName = SkillRouterService.FALLBACK_SKILL_NAME))
-
         val fallbackSkill = ctx.skillRouterService.findFallbackSkill()
-        val response = ctx.dynamicAgentService.chat(
-            fallbackSkill, state.userMessage, ctx.listener, state.conversationHistory,
-            conversationId = state.conversationId
+        val isDirectiveRetry = fromSkill == SkillRouterService.FALLBACK_SKILL_NAME
+
+        val reason = if (isDirectiveRetry) {
+            "Retrying with a stronger directive after an inadequate response"
+        } else {
+            "Response did not adequately answer the question."
+        }
+
+        log.info { "Rerouting from $fromSkill to ${fallbackSkill.name} (directiveRetry=$isDirectiveRetry)" }
+        ctx.listener.onEvent(
+            AgentEvent.SkillReroutedEvent(
+                fromSkill = fromSkill,
+                toSkill = fallbackSkill.name,
+                reason = reason
+            )
         )
+        ctx.listener.onEvent(AgentEvent.SkillMatchedEvent(skillName = fallbackSkill.name))
+
+        val response = if (isDirectiveRetry) {
+            ctx.dynamicAgentService.chat(
+                fallbackSkill,
+                state.userMessage,
+                ctx.listener,
+                conversationHistory = emptyList(),
+                conversationId = state.conversationId,
+                systemPromptSuffix = DIRECTIVE_RETRY_SUFFIX
+            )
+        } else {
+            ctx.dynamicAgentService.chat(
+                fallbackSkill,
+                state.userMessage,
+                ctx.listener,
+                conversationHistory = state.conversationHistory,
+                conversationId = state.conversationId
+            )
+        }
 
         return mapOf(AGENT_RESPONSE to response)
     }

@@ -1046,4 +1046,153 @@ class DynamicAgentServiceTest {
         assertEquals("Done.", result.response)
         assertFalse(result.awaitingApproval)
     }
+
+    /**
+     * ChatModel stub that captures the messages of the first request it receives,
+     * then returns a fixed text response. Used to assert that the agent loop builds
+     * the message list correctly from system prompt + conversation history + user message.
+     */
+    private class CapturingChatModel(private val replyText: String = "ok") : ChatModel {
+        var capturedMessages: List<ChatMessage>? = null
+            private set
+
+        override fun doChat(request: ChatRequest): ChatResponse {
+            if (capturedMessages == null) {
+                capturedMessages = request.messages().toList()
+            }
+            return ChatResponse.builder().aiMessage(AiMessage.from(replyText)).build()
+        }
+    }
+
+    @Test
+    fun `cross-skill assistant messages in history are replaced with a neutral placeholder`() {
+        // Regression for the persona-leakage bug: when the matched skill differs from
+        // the skill that produced a prior assistant turn, the prior content must NOT
+        // be passed verbatim — it would anchor the model on the old persona despite
+        // the new system prompt.
+        whenever(toolService.getSpecificationsByNames(any())).thenReturn(emptyList())
+        whenever(toolService.getExecutorsByNames(any())).thenReturn(emptyMap())
+
+        val capturingModel = CapturingChatModel(replyText = "Physics is the study of matter and energy.")
+        val service = DynamicAgentService(
+            capturingModel, toolService, agentProperties, taskPlanningService,
+            referenceRetrievalService, skillService, delegateToSkillExecutorFactory,
+            pendingApprovalService, identityService
+        )
+
+        val history = listOf(
+            ConversationMessage(role = "user", content = "How do I grow potatoes?"),
+            ConversationMessage(
+                role = "assistant",
+                content = "Plant in well-drained soil, hill regularly, harvest after the foliage dies back. 🌱",
+                skill = "horticulturalist"
+            )
+        )
+
+        service.chat(skill, "Now tell me about physics", conversationHistory = history)
+
+        val captured = capturingModel.capturedMessages
+        assertNotNull(captured)
+        val assistantMessages = captured!!.filterIsInstance<AiMessage>()
+        assertEquals(1, assistantMessages.size)
+        assertEquals(
+            "[Earlier in this conversation, the horticulturalist skill responded to a different topic.]",
+            assistantMessages[0].text()
+        )
+        // The user message from the prior turn must still be present so context survives.
+        val userMessages = captured.filterIsInstance<UserMessage>()
+        assertTrue(userMessages.any { it.singleText().contains("How do I grow potatoes?") })
+        assertTrue(userMessages.any { it.singleText().contains("Now tell me about physics") })
+    }
+
+    @Test
+    fun `same-skill assistant messages in history are passed through unchanged`() {
+        // Regression: when the assistant turn was produced by the SAME skill, its
+        // content must be preserved so follow-up questions ("tell me more") work.
+        whenever(toolService.getSpecificationsByNames(any())).thenReturn(emptyList())
+        whenever(toolService.getExecutorsByNames(any())).thenReturn(emptyMap())
+
+        val capturingModel = CapturingChatModel()
+        val service = DynamicAgentService(
+            capturingModel, toolService, agentProperties, taskPlanningService,
+            referenceRetrievalService, skillService, delegateToSkillExecutorFactory,
+            pendingApprovalService, identityService
+        )
+
+        val history = listOf(
+            ConversationMessage(role = "user", content = "What is 2+2?"),
+            ConversationMessage(
+                role = "assistant",
+                content = "The answer is 4.",
+                skill = skill.name
+            )
+        )
+
+        service.chat(skill, "And 3+3?", conversationHistory = history)
+
+        val captured = capturingModel.capturedMessages
+        assertNotNull(captured)
+        val assistantMessages = captured!!.filterIsInstance<AiMessage>()
+        assertEquals(1, assistantMessages.size)
+        assertEquals("The answer is 4.", assistantMessages[0].text())
+    }
+
+    @Test
+    fun `assistant messages with null skill in history are passed through unchanged`() {
+        // Backwards compatibility: legacy/historical messages without skill metadata
+        // (skill == null) must keep their original content rather than being replaced.
+        whenever(toolService.getSpecificationsByNames(any())).thenReturn(emptyList())
+        whenever(toolService.getExecutorsByNames(any())).thenReturn(emptyMap())
+
+        val capturingModel = CapturingChatModel()
+        val service = DynamicAgentService(
+            capturingModel, toolService, agentProperties, taskPlanningService,
+            referenceRetrievalService, skillService, delegateToSkillExecutorFactory,
+            pendingApprovalService, identityService
+        )
+
+        val history = listOf(
+            ConversationMessage(role = "user", content = "Hello"),
+            ConversationMessage(role = "assistant", content = "Hi there.", skill = null)
+        )
+
+        service.chat(skill, "How are you?", conversationHistory = history)
+
+        val captured = capturingModel.capturedMessages
+        assertNotNull(captured)
+        val assistantMessages = captured!!.filterIsInstance<AiMessage>()
+        assertEquals(1, assistantMessages.size)
+        assertEquals("Hi there.", assistantMessages[0].text())
+    }
+
+    @Test
+    fun `systemPromptSuffix is appended to the effective system prompt`() {
+        // Verifies the directive-retry mechanism: when chat() is called with a
+        // systemPromptSuffix, that text must appear in the SystemMessage handed to
+        // the LLM, after the skill's base prompt.
+        whenever(toolService.getSpecificationsByNames(any())).thenReturn(emptyList())
+        whenever(toolService.getExecutorsByNames(any())).thenReturn(emptyMap())
+
+        val capturingModel = CapturingChatModel()
+        val service = DynamicAgentService(
+            capturingModel, toolService, agentProperties, taskPlanningService,
+            referenceRetrievalService, skillService, delegateToSkillExecutorFactory,
+            pendingApprovalService, identityService
+        )
+
+        val directive = "IMPORTANT: answer directly without deflecting."
+        service.chat(skill, "What is gravity?", systemPromptSuffix = directive)
+
+        val captured = capturingModel.capturedMessages
+        assertNotNull(captured)
+        val systemMessage = captured!!.filterIsInstance<SystemMessage>().single()
+        assertTrue(
+            systemMessage.text().contains(skill.systemPrompt),
+            "expected base system prompt to be present"
+        )
+        assertTrue(
+            systemMessage.text().contains(directive),
+            "expected directive suffix to be appended, got: ${systemMessage.text()}"
+        )
+    }
 }
