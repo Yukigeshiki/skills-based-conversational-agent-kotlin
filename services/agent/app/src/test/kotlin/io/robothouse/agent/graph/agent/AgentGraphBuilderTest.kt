@@ -20,6 +20,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
 import java.util.Collections
+import java.util.concurrent.TimeoutException
 
 class AgentGraphBuilderTest {
 
@@ -161,6 +162,92 @@ class AgentGraphBuilderTest {
         assertTrue(
             root is IllegalStateException && root.message == "API failure",
             "Expected root cause IllegalStateException('API failure') but got: ${root::class.simpleName}: ${root.message}"
+        )
+    }
+
+    @Test
+    fun `callLlm throws TimeoutException when streaming chat returns after deadline`() {
+        // The streaming model sleeps past the configured timeout, then completes
+        // successfully. The post-call checkTimeout in callLlm must catch this and
+        // throw TimeoutException so the agent loop honours its wall-clock budget
+        // even when the underlying call returned a successful response.
+        val streamingModel = object : StreamingChatModel {
+            override fun doChat(request: ChatRequest, handler: StreamingChatResponseHandler) {
+                Thread.sleep(80)  // exceeds the 50ms budget below
+                handler.onCompleteResponse(
+                    ChatResponse.builder().aiMessage(AiMessage.from("late response")).build()
+                )
+            }
+        }
+
+        val ctx = buildContext(streamingChatModel = streamingModel).copy(
+            startTime = System.currentTimeMillis(),
+            timeoutMillis = 50L,
+            checkTimeout = { startTime, timeoutMillis ->
+                if (System.currentTimeMillis() - startTime > timeoutMillis) {
+                    throw TimeoutException("Agent loop exceeded timeout")
+                }
+            }
+        )
+        val graph = AgentGraphBuilder.build(ctx)
+
+        val initialState = mapOf(
+            AgentGraphState.MESSAGES to listOf(
+                SystemMessage.from("You are a test assistant."),
+                UserMessage.from("Hello")
+            ),
+            AgentGraphState.ITERATION to 1,
+            AgentGraphState.DONE to false,
+            AgentGraphState.RESPONSE to ""
+        )
+
+        val ex = assertThrows<Exception> { graph.invoke(initialState) }
+        fun Throwable.rootCause(): Throwable = cause?.rootCause() ?: this
+        val root = ex.rootCause()
+        assertTrue(
+            root is TimeoutException,
+            "Expected root cause TimeoutException but got: ${root::class.simpleName}: ${root.message}"
+        )
+    }
+
+    @Test
+    fun `callLlm throws TimeoutException when non-streaming chat returns after deadline`() {
+        // Same scenario for the non-streaming path: a slow successful chat must be
+        // rejected by the post-call deadline check.
+        val chatModel = object : ChatModel {
+            override fun doChat(request: ChatRequest): ChatResponse {
+                Thread.sleep(80)  // exceeds the 50ms budget below
+                return ChatResponse.builder().aiMessage(AiMessage.from("late response")).build()
+            }
+        }
+
+        val ctx = buildContext(chatModel = chatModel, streamingChatModel = null).copy(
+            startTime = System.currentTimeMillis(),
+            timeoutMillis = 50L,
+            checkTimeout = { startTime, timeoutMillis ->
+                if (System.currentTimeMillis() - startTime > timeoutMillis) {
+                    throw TimeoutException("Agent loop exceeded timeout")
+                }
+            }
+        )
+        val graph = AgentGraphBuilder.build(ctx)
+
+        val initialState = mapOf(
+            AgentGraphState.MESSAGES to listOf(
+                SystemMessage.from("You are a test assistant."),
+                UserMessage.from("Hello")
+            ),
+            AgentGraphState.ITERATION to 1,
+            AgentGraphState.DONE to false,
+            AgentGraphState.RESPONSE to ""
+        )
+
+        val ex = assertThrows<Exception> { graph.invoke(initialState) }
+        fun Throwable.rootCause(): Throwable = cause?.rootCause() ?: this
+        val root = ex.rootCause()
+        assertTrue(
+            root is TimeoutException,
+            "Expected root cause TimeoutException but got: ${root::class.simpleName}: ${root.message}"
         )
     }
 

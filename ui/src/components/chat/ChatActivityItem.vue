@@ -100,6 +100,13 @@
           </div>
         </div>
       </template>
+
+      <template v-else-if="event.type === 'llm_retrying'">
+        <span class="text-yellow-600 dark:text-yellow-400">
+          Retrying LLM call (attempt {{ event.attempt }}/{{ event.maxAttempts }})
+          <span class="text-muted-foreground">— {{ event.message }}</span>
+        </span>
+      </template>
     </div>
   </div>
 </template>
@@ -149,6 +156,7 @@ const iconMap = {
   skill_handoff_started: ArrowRightLeft,
   skill_handoff_completed: ArrowRightLeft,
   approval_required: ShieldCheck,
+  llm_retrying: RotateCw,
 } as const
 
 /** Resolves the icon component for the current event type, falling back to {@link Circle}. */

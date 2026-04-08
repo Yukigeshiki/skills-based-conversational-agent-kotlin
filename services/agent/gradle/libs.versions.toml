@@ -37,7 +37,6 @@ postgresql = { group = "org.postgresql", name = "postgresql" }
 jtokkit = { group = "com.knuddels", name = "jtokkit", version.ref = "jtokkit" }
 caffeine = { group = "com.github.ben-manes.caffeine", name = "caffeine", version = "3.1.8" }
 failsafe = { group = "dev.failsafe", name = "failsafe", version.ref = "failsafe" }
-commons-lang3 = { group = "org.apache.commons", name = "commons-lang3", version.ref = "commons-lang3" }
 
 junit-platform-launcher = { group = "org.junit.platform", name = "junit-platform-launcher" }
 mockito-kotlin = { group = "org.mockito.kotlin", name = "mockito-kotlin", version = "5.4.0" }

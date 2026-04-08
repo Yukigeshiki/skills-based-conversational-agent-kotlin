@@ -4,6 +4,8 @@ import dev.langchain4j.model.anthropic.AnthropicChatModel
 import dev.langchain4j.model.anthropic.AnthropicStreamingChatModel
 import dev.langchain4j.model.chat.ChatModel
 import dev.langchain4j.model.chat.StreamingChatModel
+import io.robothouse.agent.util.RetryingChatModel
+import io.robothouse.agent.util.RetryingStreamingChatModel
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.boot.context.properties.EnableConfigurationProperties
@@ -32,22 +34,38 @@ data class ChatModelProperties(
 }
 
 @Configuration
-@EnableConfigurationProperties(ChatModelProperties::class, AgentProperties::class)
+@EnableConfigurationProperties(
+    ChatModelProperties::class,
+    AgentProperties::class,
+    LlmRetryProperties::class
+)
 class ChatModelConfig {
 
     @Bean
     @Qualifier("agentChatModel")
-    fun agentChatModel(properties: ChatModelProperties): ChatModel =
-        buildModel(properties, properties.agent)
+    fun agentChatModel(
+        properties: ChatModelProperties,
+        retryProperties: LlmRetryProperties
+    ): ChatModel = RetryingChatModel(
+        delegate = buildModel(properties, properties.agent),
+        properties = retryProperties
+    )
 
     @Bean
     @Qualifier("agentStreamingChatModel")
-    fun agentStreamingChatModel(properties: ChatModelProperties): StreamingChatModel =
-        buildStreamingModel(properties, properties.agent)
+    fun agentStreamingChatModel(
+        properties: ChatModelProperties,
+        retryProperties: LlmRetryProperties
+    ): StreamingChatModel =
+        RetryingStreamingChatModel(buildStreamingModel(properties, properties.agent), retryProperties)
 
     @Bean
     @Qualifier("lightChatModel")
     fun lightChatModel(properties: ChatModelProperties): ChatModel =
+        // Intentionally NOT wrapped in RetryingChatModel: the auxiliary services
+        // that use this bean already have fail-fast fallbacks, and retrying behind
+        // them would silently delay the chat flow. Retry is reserved for the main
+        // agent loop, which installs a budget supplier via LlmRetryEventEmitter.
         buildModel(properties, properties.light)
 
     private fun buildModel(properties: ChatModelProperties, settings: ChatModelProperties.ModelSettings): ChatModel =
@@ -57,6 +75,9 @@ class ChatModelConfig {
             .temperature(settings.temperature)
             .maxTokens(settings.maxTokens)
             .timeout(Duration.ofSeconds(properties.timeoutSeconds))
+            // Disable LangChain4j's built-in retry — RetryingChatModel handles it with
+            // jittered exponential backoff and explicit classification
+            .maxRetries(0)
             .logRequests(properties.logRequests)
             .logResponses(properties.logResponses)
             .build()

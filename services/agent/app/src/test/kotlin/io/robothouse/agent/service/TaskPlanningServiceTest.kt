@@ -100,6 +100,35 @@ class TaskPlanningServiceTest {
     }
 
     @Test
+    fun `falls back to single-step plan when chat model throws`() {
+        // The light model is intentionally not wrapped in RetryingChatModel, so a
+        // transient exception must surface immediately and trigger the fail-fast
+        // fallback rather than blocking the agent flow with retry sleeps.
+        val throwingModel = object : ChatModel {
+            override fun doChat(request: ChatRequest): ChatResponse {
+                throw RuntimeException("Simulated transient LLM failure")
+            }
+        }
+
+        val service = TaskPlanningService(throwingModel, agentProperties, skillCacheService)
+        val plan = service.createPlan("Do something")
+
+        assertEquals(1, plan.steps.size)
+        assertEquals("Do something", plan.steps[0].description)
+        assertEquals("Fallback: LLM call failed", plan.reasoning)
+    }
+
+    @Test
+    fun `falls back to single-step plan when chat model returns blank text`() {
+        val service = TaskPlanningService(fakeChatModel(""), agentProperties, skillCacheService)
+        val plan = service.createPlan("Do something")
+
+        assertEquals(1, plan.steps.size)
+        assertEquals("Do something", plan.steps[0].description)
+        assertEquals("Fallback: LLM returned empty response", plan.reasoning)
+    }
+
+    @Test
     fun `caps steps at maxPlanSteps`() {
         val steps = (1..10).joinToString(",") {
             """{"stepNumber": $it, "description": "Step $it", "expectedTools": []}"""

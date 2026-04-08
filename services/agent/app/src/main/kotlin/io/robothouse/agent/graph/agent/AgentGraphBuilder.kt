@@ -17,6 +17,7 @@ import io.robothouse.agent.model.AgentIteration
 import io.robothouse.agent.model.ToolCall
 import io.robothouse.agent.model.ToolExecutionStep
 import io.robothouse.agent.model.ToolObservation
+import io.robothouse.agent.util.LlmRetryEventEmitter
 import org.bsc.langgraph4j.CompiledGraph
 import org.bsc.langgraph4j.CompileConfig
 import org.bsc.langgraph4j.GraphDefinition.END
@@ -133,11 +134,32 @@ object AgentGraphBuilder {
         }
 
         val chatRequest = requestBuilder.build()
-        val response = if (ctx.agentStreamingChatModel != null) {
-            streamAndBlock(chatRequest, ctx)
-        } else {
-            ctx.agentChatModel.chat(chatRequest)
+        val response = LlmRetryEventEmitter.withCallbackAndBudget(
+            callback = { attempt, maxAttempts, safeDescription ->
+                ctx.emitEvent(ctx.listener) {
+                    AgentEvent.LlmRetryingEvent(
+                        attempt = attempt,
+                        maxAttempts = maxAttempts,
+                        message = safeDescription
+                    )
+                }
+            },
+            budgetSupplier = {
+                ctx.timeoutMillis - (System.currentTimeMillis() - ctx.startTime)
+            }
+        ) {
+            if (ctx.agentStreamingChatModel != null) {
+                streamAndBlock(chatRequest, ctx)
+            } else {
+                ctx.agentChatModel.chat(chatRequest)
+            }
         }
+
+        // Enforce the wall-clock deadline after the LLM call returns. The retry
+        // decorators give up before sleeping past the budget, but a single in-flight
+        // attempt or a retry sequence can still overrun — this catches both.
+        ctx.checkTimeout(ctx.startTime, ctx.timeoutMillis)
+
         val aiMessage = response.aiMessage()
         messages.add(aiMessage)
 
@@ -244,10 +266,15 @@ object AgentGraphBuilder {
             }
         })
 
-        val elapsedMs = System.currentTimeMillis() - ctx.startTime
-        val remainingMs = ctx.timeoutMillis - elapsedMs
-        if (remainingMs <= 0 || !latch.await(remainingMs, TimeUnit.MILLISECONDS)) {
-            throw TimeoutException("Streaming LLM call timed out")
+        // If the streaming model returned synchronously (e.g. via the retrying decorator),
+        // the latch is already counted down. Skip the wall-clock timeout check in that
+        // case so retries that legitimately consumed budget are not reported as timeouts.
+        if (latch.count > 0L) {
+            val elapsedMs = System.currentTimeMillis() - ctx.startTime
+            val remainingMs = ctx.timeoutMillis - elapsedMs
+            if (remainingMs <= 0 || !latch.await(remainingMs, TimeUnit.MILLISECONDS)) {
+                throw TimeoutException("Streaming LLM call timed out")
+            }
         }
         errorRef.get()?.let {
             throw it as? RuntimeException ?: RuntimeException("Streaming LLM call failed", it)

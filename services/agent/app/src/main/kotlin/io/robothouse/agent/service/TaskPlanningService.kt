@@ -112,11 +112,17 @@ class TaskPlanningService(
             )
             .build()
 
-        val response = chatModel.chat(request)
+        val response = try {
+            chatModel.chat(request)
+        } catch (e: Exception) {
+            log.warn { "Task planning LLM call failed, falling back to single-step plan: ${e.message}" }
+            return singleStepFallback(userMessage, reason = "LLM call failed")
+        }
         val responseText = response.aiMessage().text()
 
         if (responseText.isNullOrBlank()) {
-            throw IllegalStateException("Task planning failed: LLM returned an empty response")
+            log.warn { "Task planning LLM returned an empty response, falling back to single-step plan" }
+            return singleStepFallback(userMessage, reason = "LLM returned empty response")
         }
 
         val plan = parsePlan(responseText, userMessage)
@@ -138,7 +144,7 @@ class TaskPlanningService(
             plan.copy(steps = cappedSteps)
         } catch (e: Exception) {
             log.warn { "Failed to parse plan JSON, falling back to single-step plan: ${e.message}" }
-            singleStepFallback(userMessage)
+            singleStepFallback(userMessage, reason = "could not parse plan")
         }
     }
 
@@ -147,7 +153,10 @@ class TaskPlanningService(
         return fencePattern.find(text)?.groupValues?.get(1) ?: text
     }
 
-    private fun singleStepFallback(userMessage: String): TaskPlan {
+    private fun singleStepFallback(
+        userMessage: String,
+        reason: String = "planning unavailable"
+    ): TaskPlan {
         return TaskPlan(
             steps = listOf(
                 PlanStep(
@@ -156,7 +165,7 @@ class TaskPlanningService(
                     expectedTools = emptyList()
                 )
             ),
-            reasoning = "Fallback: could not parse plan"
+            reasoning = "Fallback: $reason"
         )
     }
 

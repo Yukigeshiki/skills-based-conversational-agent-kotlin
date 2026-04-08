@@ -30,6 +30,7 @@ import java.time.Instant
     JsonSubTypes.Type(value = AgentEvent.ApprovalRequiredEvent::class, name = "approval_required"),
     JsonSubTypes.Type(value = AgentEvent.ApprovalResolvedEvent::class, name = "approval_resolved"),
     JsonSubTypes.Type(value = AgentEvent.WarningEvent::class, name = "warning"),
+    JsonSubTypes.Type(value = AgentEvent.LlmRetryingEvent::class, name = "llm_retrying"),
     JsonSubTypes.Type(value = AgentEvent.ErrorEvent::class, name = "error"),
     JsonSubTypes.Type(value = AgentEvent.HeartbeatEvent::class, name = "heartbeat"),
     JsonSubTypes.Type(value = AgentEvent.ResponseChunkEvent::class, name = "response_chunk")
@@ -237,6 +238,20 @@ sealed class AgentEvent {
         override val timestamp: Instant = Instant.now()
     ) : AgentEvent() {
         override val type: String = "warning"
+    }
+
+    /**
+     * Emitted when an LLM call fails with a transient error and is being retried
+     * with backoff. Lets the UI display "\[retrying...]" feedback during long retry
+     * loops so users see that the system is recovering rather than appearing hung.
+     */
+    data class LlmRetryingEvent(
+        val attempt: Int,
+        val maxAttempts: Int,
+        val message: String,
+        override val timestamp: Instant = Instant.now()
+    ) : AgentEvent() {
+        override val type: String = "llm_retrying"
     }
 
     /**

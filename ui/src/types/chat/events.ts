@@ -145,6 +145,14 @@ export interface WarningEvent {
   timestamp: string
 }
 
+export interface LlmRetryingEvent {
+  type: 'llm_retrying'
+  attempt: number
+  maxAttempts: number
+  message: string
+  timestamp: string
+}
+
 export interface ErrorEvent {
   type: 'error'
   message: string
@@ -174,5 +182,6 @@ export type ChatEvent =
   | ApprovalRequiredEvent
   | ApprovalResolvedEvent
   | WarningEvent
+  | LlmRetryingEvent
   | ErrorEvent
   | ResponseChunkEvent
