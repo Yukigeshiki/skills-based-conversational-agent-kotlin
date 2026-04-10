@@ -44,21 +44,21 @@
         </div>
       </template>
 
-      <template #headers="{ sortColumn, sortDirection, handleSort }">
+      <template #headers="{ sortColumn: slotSortColumn, sortDirection: slotSortDirection, handleSort: slotHandleSort }">
         <TableHead class="w-8" />
-        <SortableTableHead column="name" :sort-column="sortColumn" :sort-direction="sortDirection" @sort="handleSort">
+        <SortableTableHead column="name" :sort-column="slotSortColumn" :sort-direction="slotSortDirection" @sort="slotHandleSort">
           Name
         </SortableTableHead>
         <TableHead>Description</TableHead>
         <TableHead>Method</TableHead>
         <TableHead>Parameters</TableHead>
-        <SortableTableHead column="createdAt" :sort-column="sortColumn" :sort-direction="sortDirection" @sort="handleSort">
+        <SortableTableHead column="createdAt" :sort-column="slotSortColumn" :sort-direction="slotSortDirection" @sort="slotHandleSort">
           Created
         </SortableTableHead>
       </template>
 
-      <template #rows="{ data }">
-        <template v-for="tool in asHttpTools(data)" :key="tool.id">
+      <template #rows="{ data: rowsData }">
+        <template v-for="tool in asHttpTools(rowsData)" :key="tool.id">
           <HttpToolsTableRow
             :tool="tool"
             :is-expanded="isRowExpanded(tool.id)"

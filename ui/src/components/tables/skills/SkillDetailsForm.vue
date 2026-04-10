@@ -50,12 +50,8 @@
         placeholder="LLM instructions for this skill"
         :rows="systemPromptRows"
       />
-      <div
-        v-show="systemPromptPreview"
-        class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3"
-        :style="{ minHeight: systemPromptPreviewHeight, maxHeight: systemPromptPreviewHeight }"
-        v-html="renderedSystemPrompt"
-      />
+      <!-- eslint-disable-next-line vue/no-v-html -- sanitised by DOMPurify via useRenderedMarkdown -->
+      <div v-show="systemPromptPreview" class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3" :style="{ minHeight: systemPromptPreviewHeight, maxHeight: systemPromptPreviewHeight }" v-html="renderedSystemPrompt" />
     </div>
     <div class="space-y-2">
       <div class="flex items-center justify-between">
@@ -69,12 +65,8 @@
         placeholder="Define a template for how this skill should structure responses"
         :rows="responseTemplateRows"
       />
-      <div
-        v-show="responseTemplatePreview"
-        class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3"
-        :style="{ minHeight: responseTemplatePreviewHeight, maxHeight: responseTemplatePreviewHeight }"
-        v-html="renderedResponseTemplate"
-      />
+      <!-- eslint-disable-next-line vue/no-v-html -- sanitised by DOMPurify via useRenderedMarkdown -->
+      <div v-show="responseTemplatePreview" class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3" :style="{ minHeight: responseTemplatePreviewHeight, maxHeight: responseTemplatePreviewHeight }" v-html="renderedResponseTemplate" />
     </div>
   </div>
 </template>

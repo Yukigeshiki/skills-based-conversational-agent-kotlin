@@ -89,6 +89,7 @@
                     placeholder="Paste reference content here..."
                     rows="10"
                   />
+                  <!-- eslint-disable-next-line vue/no-v-html -- sanitised by DOMPurify via useRenderedMarkdown -->
                   <div v-show="refContentPreview" class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3" style="min-height: 15rem; max-height: 15rem;" v-html="renderedRefContent" />
                 </div>
                 <div v-if="referenceFormError" class="text-sm text-destructive">{{ referenceFormError }}</div>
@@ -154,12 +155,14 @@
               <!-- System Prompt -->
               <div class="space-y-2">
                 <h3 class="text-base font-semibold border-b pb-2">System Prompt</h3>
+                <!-- eslint-disable-next-line vue/no-v-html -- sanitised by DOMPurify via useRenderedMarkdown -->
                 <div class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3" style="max-height: 16rem;" v-html="renderedReviewSystemPrompt" />
               </div>
 
               <!-- Response Template -->
               <div v-if="skillForm.responseTemplate.trim()" class="space-y-2">
                 <h3 class="text-base font-semibold border-b pb-2">Response Template</h3>
+                <!-- eslint-disable-next-line vue/no-v-html -- sanitised by DOMPurify via useRenderedMarkdown -->
                 <div class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3" style="max-height: 12rem;" v-html="renderedReviewResponseTemplate" />
               </div>
 
@@ -179,6 +182,7 @@
                     class="space-y-2"
                   >
                     <h4 class="text-sm font-medium">{{ pendingRef.name }}</h4>
+                    <!-- eslint-disable-next-line vue/no-v-html -- sanitised by DOMPurify via useRenderedMarkdown -->
                     <div class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3" style="max-height: 12rem;" v-html="renderedReferenceContents[i] ?? ''" />
                   </div>
                 </div>

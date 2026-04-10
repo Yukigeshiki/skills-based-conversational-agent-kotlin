@@ -24,9 +24,12 @@
           <span class="italic">{{ event.plan.reasoning }}</span>
           <ol class="mt-1 list-inside list-decimal space-y-0.5 pl-1">
             <li v-for="step in event.plan.steps" :key="step.stepNumber">
-              {{ step.description }}<template v-if="step.skillName && event.plan.steps.length > 1">.
-              <span class="ml-1">Matched skill:</span>
-              <span class="rounded bg-accent px-1.5 py-0.5 font-medium text-accent-foreground">{{ step.skillName }}</span></template>
+              {{ step.description }}
+              <template v-if="step.skillName && event.plan.steps.length > 1">
+                .
+                <span class="ml-1">Matched skill:</span>
+                <span class="rounded bg-accent px-1.5 py-0.5 font-medium text-accent-foreground">{{ step.skillName }}</span>
+              </template>
             </li>
           </ol>
         </div>

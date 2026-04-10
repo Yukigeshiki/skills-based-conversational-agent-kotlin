@@ -290,7 +290,7 @@ class StreamingChatService(
                             emitter.send(
                                 SseEmitter.event()
                                     .name("error")
-                                    .data(objectMapper.writeValueAsString(AgentEvent.ErrorEvent(message = e.message ?: "Unknown error")))
+                                    .data(objectMapper.writeValueAsString(AgentEvent.ErrorEvent(message = "An error occurred while processing your request")))
                             )
                             emitter.complete()
                         } catch (sendError: Exception) {

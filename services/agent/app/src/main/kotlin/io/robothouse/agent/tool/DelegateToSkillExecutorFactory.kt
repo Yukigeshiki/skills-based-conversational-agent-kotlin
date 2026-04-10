@@ -106,7 +106,8 @@ class DelegateToSkillExecutorFactory(
             val args: Map<String, String> = try {
                 objectMapper.readValue(request.arguments())
             } catch (e: Exception) {
-                return@ToolExecutor "Invalid arguments for delegateToSkill: ${e.message}"
+                log.warn { "Failed to parse delegateToSkill arguments: ${e.message}" }
+                return@ToolExecutor "Invalid arguments for delegateToSkill"
             }
 
             val skillName = args["skillName"]
@@ -154,7 +155,7 @@ class DelegateToSkillExecutorFactory(
                         success = false
                     )
                 )
-                "Delegation to skill '$skillName' failed: ${e.message}"
+                "Delegation to skill '$skillName' failed"
             }
         }
     }

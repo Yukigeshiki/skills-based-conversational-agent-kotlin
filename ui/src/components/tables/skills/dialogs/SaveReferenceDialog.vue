@@ -31,6 +31,7 @@
             required
             rows="16"
           />
+          <!-- eslint-disable-next-line vue/no-v-html -- sanitised by DOMPurify via useRenderedMarkdown -->
           <div v-show="contentPreview" class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3" style="min-height: 24rem; max-height: 24rem;" v-html="renderedContent" />
         </div>
 

@@ -69,7 +69,7 @@ class HttpToolExecutor(
             result.body
         } catch (e: Exception) {
             log.warn { "HTTP tool call failed: ${e.message}" }
-            "Error executing HTTP tool: ${e.message}"
+            "Error executing HTTP tool"
         }
     }
 

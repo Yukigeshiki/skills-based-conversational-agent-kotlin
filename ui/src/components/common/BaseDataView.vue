@@ -228,6 +228,7 @@ interface Emits {
 
 const props = withDefaults(defineProps<Props>(), {
   error: undefined,
+  data: undefined,
   loadingMessage: 'Loading...',
   emptyMessage: 'No records found',
   tableClass: undefined,

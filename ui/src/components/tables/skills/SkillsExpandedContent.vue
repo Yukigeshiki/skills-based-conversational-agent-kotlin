@@ -29,11 +29,13 @@
 
         <!-- System Prompt section -->
         <CollapsibleSection title="System Prompt" :default-expanded="false">
+          <!-- eslint-disable-next-line vue/no-v-html -- sanitised by DOMPurify via useRenderedMarkdown -->
           <div class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded border p-4 max-h-64" v-html="renderedSystemPrompt" />
         </CollapsibleSection>
 
         <!-- Response Template section -->
         <CollapsibleSection v-if="skill.responseTemplate" title="Response Template" :default-expanded="false">
+          <!-- eslint-disable-next-line vue/no-v-html -- sanitised by DOMPurify via useRenderedMarkdown -->
           <div class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded border p-4 max-h-64" v-html="renderedResponseTemplate" />
         </CollapsibleSection>
 
@@ -46,16 +48,16 @@
             </div>
             <div v-else class="max-h-30 overflow-y-auto space-y-1">
               <div
-                v-for="ref in references"
-                :key="ref.id"
+                v-for="reference in references"
+                :key="reference.id"
                 class="flex items-center justify-between rounded border px-3 py-1.5"
               >
-                <div class="text-sm">{{ ref.name }}</div>
+                <div class="text-sm">{{ reference.name }}</div>
                 <div v-if="!skill.isProtected" class="flex items-center gap-0.5 ml-3 shrink-0">
-                  <Button size="icon" variant="ghost" class="h-7 w-7 cursor-pointer text-muted-foreground/40 hover:text-foreground" @click="onEditReference(ref.id)">
+                  <Button size="icon" variant="ghost" class="h-7 w-7 cursor-pointer text-muted-foreground/40 hover:text-foreground" @click="onEditReference(reference.id)">
                     <Pencil class="h-3.5 w-3.5" />
                   </Button>
-                  <Button size="icon" variant="ghost" class="h-7 w-7 cursor-pointer text-muted-foreground/40 hover:text-destructive" @click="onDeleteReference(ref.id)">
+                  <Button size="icon" variant="ghost" class="h-7 w-7 cursor-pointer text-muted-foreground/40 hover:text-destructive" @click="onDeleteReference(reference.id)">
                     <Trash2 class="h-3.5 w-3.5" />
                   </Button>
                 </div>

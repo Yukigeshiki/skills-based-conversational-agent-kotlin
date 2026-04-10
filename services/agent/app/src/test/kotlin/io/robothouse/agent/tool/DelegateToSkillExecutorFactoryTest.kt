@@ -212,8 +212,7 @@ class DelegateToSkillExecutorFactoryTest {
 
         val result = executor.execute(request, null)
 
-        assertTrue(result.contains("failed"))
-        assertTrue(result.contains("LLM unavailable"))
+        assertEquals("Delegation to skill 'time-skill' failed", result)
 
         val completed = events.filterIsInstance<AgentEvent.SkillHandoffCompletedEvent>()
         assertEquals(1, completed.size)

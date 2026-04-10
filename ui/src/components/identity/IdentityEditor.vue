@@ -18,11 +18,8 @@
       placeholder="Enter a system prompt to define the agent's personality..."
       class="min-h-125 font-mono text-sm"
     />
-    <div
-      v-show="previewing"
-      class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3 min-h-125 max-h-125"
-      v-html="renderedPrompt"
-    />
+    <!-- eslint-disable-next-line vue/no-v-html -- sanitised by DOMPurify via useRenderedMarkdown -->
+    <div v-show="previewing" class="prose prose-sm dark:prose-invert max-w-none overflow-y-auto rounded-md border p-3 min-h-125 max-h-125" v-html="renderedPrompt" />
     <div class="flex items-center gap-3">
       <Button :disabled="!isDirty || saving" @click="save">
         <Loader2 v-if="saving" class="h-4 w-4 animate-spin" />

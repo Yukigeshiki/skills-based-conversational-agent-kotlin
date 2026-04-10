@@ -11,11 +11,8 @@
         @reject="$emit('reject', message.id)"
       />
       <ChatErrorMessage v-if="message.error" :error="message.error" />
-      <div
-        v-if="message.content"
-        class="rounded-2xl rounded-bl-sm bg-muted px-4 py-2.5 prose prose-sm prose-neutral dark:prose-invert max-w-none"
-        v-html="renderedContent"
-      />
+      <!-- eslint-disable-next-line vue/no-v-html -- sanitised by DOMPurify via useRenderedMarkdown -->
+      <div v-if="message.content" class="rounded-2xl rounded-bl-sm bg-muted px-4 py-2.5 prose prose-sm prose-neutral dark:prose-invert max-w-none" v-html="renderedContent" />
     </div>
   </div>
 </template>

@@ -109,8 +109,7 @@ class HttpToolExecutorTest {
         val executor = createExecutor()
         val result = executor.execute(createRequest(), null)
 
-        assertTrue(result.contains("Error executing HTTP tool"))
-        assertTrue(result.contains("Connection refused"))
+        assertEquals("Error executing HTTP tool", result)
     }
 
     @Test

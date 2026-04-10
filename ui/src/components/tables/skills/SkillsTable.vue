@@ -44,23 +44,23 @@
         </div>
       </template>
 
-      <template #headers="{ sortColumn, sortDirection, handleSort }">
+      <template #headers="{ sortColumn: slotSortColumn, sortDirection: slotSortDirection, handleSort: slotHandleSort }">
         <TableHead class="w-8" />
-        <SortableTableHead column="name" :sort-column="sortColumn" :sort-direction="sortDirection" @sort="handleSort">
+        <SortableTableHead column="name" :sort-column="slotSortColumn" :sort-direction="slotSortDirection" @sort="slotHandleSort">
           Name
         </SortableTableHead>
         <TableHead>Description</TableHead>
         <TableHead>Tools</TableHead>
-        <SortableTableHead column="createdAt" :sort-column="sortColumn" :sort-direction="sortDirection" @sort="handleSort">
+        <SortableTableHead column="createdAt" :sort-column="slotSortColumn" :sort-direction="slotSortDirection" @sort="slotHandleSort">
           Created
         </SortableTableHead>
-        <SortableTableHead column="updatedAt" :sort-column="sortColumn" :sort-direction="sortDirection" @sort="handleSort">
+        <SortableTableHead column="updatedAt" :sort-column="slotSortColumn" :sort-direction="slotSortDirection" @sort="slotHandleSort">
           Updated
         </SortableTableHead>
       </template>
 
-      <template #rows="{ data }">
-        <template v-for="skill in asSkillSummaries(data)" :key="skill.id">
+      <template #rows="{ data: rowsData }">
+        <template v-for="skill in asSkillSummaries(rowsData)" :key="skill.id">
           <SkillsTableRow
             :skill="skill"
             :is-expanded="isRowExpanded(skill.id)"

@@ -15,8 +15,7 @@ import java.time.Duration
  */
 @ConfigurationProperties(prefix = "http-tool.http")
 data class HttpToolHttpProperties(
-    val connectTimeoutSeconds: Long,
-    val followRedirects: Boolean
+    val connectTimeoutSeconds: Long
 )
 
 /**
@@ -52,10 +51,10 @@ class HttpToolConfig {
     fun httpToolHttpClient(properties: HttpToolHttpProperties): HttpClient =
         HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(properties.connectTimeoutSeconds))
-            .followRedirects(
-                if (properties.followRedirects) HttpClient.Redirect.NORMAL
-                else HttpClient.Redirect.NEVER
-            )
+            // Redirects are always disabled — following redirects on external tool
+            // URLs is an SSRF vector: an attacker-controlled endpoint can 302 to an
+            // internal IP after the URL has passed SafeUrlValidator's blocklist check.
+            .followRedirects(HttpClient.Redirect.NEVER)
             .build()
 
     /**
